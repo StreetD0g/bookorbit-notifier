@@ -2,7 +2,7 @@
 
 **Research date:** 26 November 2026  
 **Upstream inspected:** [`bookorbit/bookorbit`](https://github.com/bookorbit/bookorbit), commit `f7a2a5df406ac913b5fc6603c0b2465ec5356f98` (main at research time).  
-**Evidence:** upstream `docs/API_KEYS.md`, server controllers/services, shared TypeScript types, and the official client source. No real BookOrbit server was available, so runtime-specific behaviour is marked accordingly.
+**Evidence:** upstream `docs/API_KEYS.md`, server controllers/services, shared TypeScript types, the official client source, and a redacted read-only probe against a user-supplied BookOrbit instance on 26 November 2026.
 
 ## Compatibility position
 
@@ -83,8 +83,9 @@ This is useful evidence that real-time detection is technically possible, but Bo
 ## Limitations and items requiring a real server
 
 - No public release matrix or guaranteed third-party API compatibility was found.
-- The exact error envelope, pagination behaviour under concurrent scans, rate limits for normal valid requests, and all runtime response payloads need fixture-backed integration tests against a real server.
-- Library discovery, read-key scoping, cover retrieval, and query pagination must be tested with the target BookOrbit version during server setup.
+- A read-only live probe authenticated successfully with an API key, discovered seven accessible libraries, queried one paginated library inventory, retrieved one book detail record, and downloaded one authenticated cover. The probe intentionally did not record account, library, or media values.
+- The exact error envelope, pagination behaviour under concurrent scans, rate limits for normal valid requests, and all runtime response payloads still need fixture-backed integration tests against a pinned real server version.
+- Library discovery, read-key scoping, cover retrieval, and a first query are now live-validated; broad pagination and failure cases still require target-version validation during server setup.
 - Direct-book UI URLs are unverified and optional.
 - Socket.IO event stability is unverified; REST polling is the production path.
 

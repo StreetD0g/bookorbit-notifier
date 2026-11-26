@@ -12,11 +12,12 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 
 ## Phase 1 – technical proof of concept
 
-- [ ] Implement an async, read-only BookOrbit client for auth, libraries, paginated book queries, detail, and cover requests.
-- [ ] Implement a Discord webhook client that sends an embed and optional cover attachment without leaking source credentials.
+- [x] Implement an async, read-only BookOrbit client for auth, libraries, paginated book queries, detail, and cover requests.
+- [x] Implement a Discord webhook client that sends an embed and optional cover attachment without leaking source credentials.
 - [ ] Add a small authenticated API that executes a non-persistent connection/Discord test.
-- [ ] Add mock-transport tests for API headers, pagination, missing covers, Discord multipart payloads, and rate-limit errors.
-- [ ] Verify the POC with a real BookOrbit instance and a disposable Discord webhook; record the target version and fixtures.
+- [x] Add mock-transport tests for API headers, pagination, missing covers, Discord multipart payloads, and rate-limit errors.
+- [x] Verify read-only BookOrbit authentication, library discovery, a book detail, an authenticated cover, and a Discord test message against user-supplied endpoints without retaining source data.
+- [ ] Record a pinned target BookOrbit version and durable redacted fixtures for broad pagination and failure cases.
 
 ## Phase 2 – core engine
 
