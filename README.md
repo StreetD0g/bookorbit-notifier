@@ -6,7 +6,7 @@ The project is independent from BookOrbit and Discord. BookOrbit's REST API is n
 
 ## Status
 
-Phase 0 is complete. The Phase-1 technical proof of concept provides a tested asynchronous BookOrbit REST client and Discord webhook transport. It does not yet persist configuration, scan state, or delivery work, so it is not production-ready.
+Phase 0 and the Phase-1 technical proof of concept are complete. Phase 2 is in progress: the project now has a tested SQLite/Alembic foundation, encrypted-secret primitive, silent baseline reconciliation, and a per-webhook outbox model. It does not yet persist administrator configuration or run scheduled scans, so it is not production-ready.
 
 ## Principles
 
