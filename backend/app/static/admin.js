@@ -6,6 +6,13 @@ const messages = {
   en: {language: "Language", login: "Sign in", password: "Password", setup: "Initial setup", setupToken: "Setup key", newPassword: "New password (at least 12 characters)", createAccount: "Create administrator", dashboard: "Notifications", refresh: "Refresh", logout: "Sign out", configured: "Account created. Please sign in.", failed: "The action failed. Please check your input.", signedOut: "Signed out.", waiting_for_metadata: "Waiting for metadata", ready: "Ready", queued: "Scheduled", sending: "Sending", retry: "Retry", sent: "Sent", failedCount: "Failed", skipped: "Skipped"}
 };
 const language = document.querySelector("#language");
+const theme = document.querySelector("#theme");
+try { if (localStorage.getItem("bookorbit-theme") === "light") theme.value = "light"; } catch { /* Storage is optional. */ }
+document.documentElement.dataset.theme = theme.value;
+theme.addEventListener("change", () => {
+  document.documentElement.dataset.theme = theme.value;
+  try { localStorage.setItem("bookorbit-theme", theme.value); } catch { /* The setting remains active for this page. */ }
+});
 const message = document.querySelector("#message");
 const authPanel = document.querySelector("#auth-panel");
 const dashboard = document.querySelector("#dashboard");
@@ -39,6 +46,10 @@ Object.assign(messages.de, {advancedFilters: "Weitere Filter", filterAuthor: "Au
 Object.assign(messages.en, {advancedFilters: "More filters", filterAuthor: "Author", filterGenre: "Genre", filterFormat: "Media format", filterLanguage: "Language", filterFrom: "Detected from (UTC)", filterTo: "Detected through (UTC)", applyFilters: "Apply filters"});
 Object.assign(messages.de, {previous: "Zurück", next: "Weiter", page: "Seite"});
 Object.assign(messages.en, {previous: "Previous", next: "Next", page: "Page"});
+Object.assign(messages.de, {theme: "Darstellung", darkTheme: "Dunkel", lightTheme: "Hell"});
+Object.assign(messages.en, {theme: "Appearance", darkTheme: "Dark", lightTheme: "Light"});
+Object.assign(messages.de, {details: "Details und Zustellhistorie", historyTruncated: "Weitere ältere Zustellversuche werden hier nicht angezeigt.", title: "Titel", subtitle: "Untertitel", authors: "Autoren", series: "Reihe", series_index: "Reihennummer", genres: "Genres", languageField: "Sprache", formats: "Formate", narrators: "Sprecher", duration_seconds: "Dauer (Sekunden)", description: "Beschreibung", isbn10: "ISBN-10", isbn13: "ISBN-13", publisher: "Verlag", published_date: "Erscheinungsdatum", published_year: "Erscheinungsjahr", page_count: "Seiten", tags: "Schlagwörter", edition_name: "Ausgabe"});
+Object.assign(messages.en, {details: "Details and delivery history", historyTruncated: "Further older delivery attempts are not displayed here.", title: "Title", subtitle: "Subtitle", authors: "Authors", series: "Series", series_index: "Series number", genres: "Genres", languageField: "Language", formats: "Formats", narrators: "Narrators", duration_seconds: "Duration (seconds)", description: "Description", isbn10: "ISBN-10", isbn13: "ISBN-13", publisher: "Publisher", published_date: "Published date", published_year: "Published year", page_count: "Pages", tags: "Tags", edition_name: "Edition"});
 let counts = null;
 let overview = null;
 let scopes = {libraries: [], webhooks: []};
@@ -207,6 +218,31 @@ function renderArrivals() {
     const authors = document.createElement("p"); authors.textContent = arrival.authors.join(", "); card.append(authors);
     const source = document.createElement("p"); source.textContent = [arrival.server_name, arrival.library_name, arrival.detected_at].join(" · "); card.append(source);
     const state = document.createElement("p"); state.textContent = strings().eventStatus + ": " + arrival.status + " · " + strings().deliveryStates + ": " + arrival.delivery_statuses.join(", "); card.append(state);
+    const details = document.createElement("details"), summary = document.createElement("summary"), content = document.createElement("div");
+    summary.textContent = strings().details; details.append(summary, content);
+    details.addEventListener("toggle", async () => {
+      if (!details.open || content.dataset.loaded === "true") return;
+      try {
+        const data = await call("/arrivals/" + arrival.event_id); content.replaceChildren();
+        const metadata = document.createElement("dl");
+        for (const [key, value] of Object.entries(data.metadata)) {
+          if (value === null || value === "" || (Array.isArray(value) && value.length === 0)) continue;
+          const term = document.createElement("dt"), description = document.createElement("dd");
+          term.textContent = strings()[key === "language" ? "languageField" : key] || key;
+          description.textContent = Array.isArray(value) ? value.join(", ") : String(value); metadata.append(term, description);
+        }
+        content.append(metadata);
+        for (const delivery of data.deliveries) {
+          const title = document.createElement("strong"); title.textContent = delivery.webhook_name + " · " + delivery.status; content.append(title);
+          const list = document.createElement("ul");
+          for (const attempt of delivery.attempts) { const item = document.createElement("li"); item.textContent = [attempt.attempted_at, attempt.status, attempt.error, attempt.discord_message_id].filter(Boolean).join(" · "); list.append(item); }
+          content.append(list);
+        }
+        if (data.history_truncated) { const note = document.createElement("p"); note.textContent = strings().historyTruncated; content.append(note); }
+        content.dataset.loaded = "true";
+      } catch { message.textContent = strings().failed; }
+    });
+    card.append(details);
     container.append(card);
   }
 }

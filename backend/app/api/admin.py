@@ -18,6 +18,7 @@ from app.database.models import (
     Event,
     EventType,
     Library,
+    NotificationHistory,
     NotificationQueueItem,
     NotificationTemplate,
     QueueStatus,
@@ -399,6 +400,74 @@ def list_arrivals(
             }
             for event, book, server_name, library_name in rows
         ]
+
+
+@router.get("/arrivals/{event_id}")
+def arrival_detail(request: Request, event_id: int, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> dict:
+    """Show safe media metadata and recent delivery attempts without source URLs or paths."""
+
+    with request.app.state.session_factory() as session:
+        event = session.get(Event, event_id)
+        if event is None or event.event_type != EventType.BOOK_ADDED:
+            raise HTTPException(status_code=404, detail="Arrival not found")
+        book = event.book
+        metadata = _template_values(book, book.library.name, book.server.name)
+        allowed = (
+            "title",
+            "subtitle",
+            "authors",
+            "series",
+            "series_index",
+            "genres",
+            "language",
+            "formats",
+            "narrators",
+            "duration_seconds",
+            "description",
+            "isbn10",
+            "isbn13",
+            "publisher",
+            "published_date",
+            "published_year",
+            "page_count",
+            "tags",
+            "edition_name",
+        )
+        deliveries = session.execute(
+            select(NotificationQueueItem, Webhook.name)
+            .join(Webhook, NotificationQueueItem.webhook_id == Webhook.id)
+            .where(NotificationQueueItem.event_id == event_id)
+            .order_by(NotificationQueueItem.id)
+        ).all()
+        ids = [item.id for item, _name in deliveries]
+        attempts = (
+            session.scalars(
+                select(NotificationHistory)
+                .where(NotificationHistory.queue_item_id.in_(ids))
+                .order_by(NotificationHistory.id.desc())
+                .limit(201)
+            ).all()
+            if ids
+            else []
+        )
+        by_delivery: dict[int, list[dict]] = {}
+        for attempt in attempts[:200]:
+            by_delivery.setdefault(attempt.queue_item_id, []).append(
+                {
+                    "status": attempt.status,
+                    "attempted_at": attempt.attempted_at,
+                    "error": attempt.error,
+                    "discord_message_id": attempt.discord_message_id,
+                }
+            )
+        return {
+            "event_id": event.id,
+            "metadata": {name: metadata.get(name) for name in allowed},
+            "deliveries": [
+                {"webhook_name": name, "status": item.status, "attempts": by_delivery.get(item.id, [])} for item, name in deliveries
+            ],
+            "history_truncated": len(attempts) > 200,
+        }
 
 
 @router.get("/notifications/{queue_item_id}/history")

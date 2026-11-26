@@ -61,6 +61,7 @@ def test_setup_login_cookie_csrf_and_logout(client) -> None:
     assert "frame-ancestors 'none'" in http.get("/admin").headers["content-security-policy"]
     assert http.get("/admin-assets/admin.js").status_code == 200
     assert http.get("/admin-assets/admin.css").status_code == 200
+    assert ':root[data-theme="light"]' in http.get("/admin-assets/admin.css").text
     assert (
         http.post(
             "/api/v1/admin/setup", headers={"origin": "https://evil.example", "x-setup-token": SETUP_TOKEN}, json={"password": PASSWORD}
@@ -87,6 +88,7 @@ def test_setup_login_cookie_csrf_and_logout(client) -> None:
 def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
     http, engine = client
     assert http.get("/api/v1/admin/arrivals").status_code == 401
+    assert http.get("/api/v1/admin/arrivals/1").status_code == 401
     csrf = setup_and_login(http)
     with Session(engine) as session:
         server = Server(name="Source", base_url="https://books.example", api_key_encrypted="encrypted")
@@ -111,7 +113,7 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
                     bookorbit_book_id=2,
                     title="New",
                     authors=["Jane Author"],
-                    metadata={"language": "de", "genres": ["Fantasy"], "files": [{"format": "epub"}]},
+                    metadata={"language": "de", "genres": ["Fantasy"], "files": [{"format": "epub", "absolutePath": "/private/test.epub"}]},
                 ),
             ],
             scan_complete=True,
@@ -127,6 +129,11 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
         library_id = library.id
     arrivals = http.get(f"/api/v1/admin/arrivals?server_id={server_id}&library_id={library_id}").json()
     assert len(arrivals) == 1 and arrivals[0]["title"] == "New" and arrivals[0]["delivery_statuses"] == ["SENT"]
+    detail = http.get(f"/api/v1/admin/arrivals/{arrivals[0]['event_id']}")
+    assert detail.status_code == 200 and detail.json()["metadata"]["formats"] == ["epub"]
+    assert detail.json()["deliveries"][0]["status"] == "SENT"
+    assert "/private/" not in detail.text and "encrypted" not in detail.text
+    assert http.get("/api/v1/admin/arrivals/999").status_code == 404
     assert "encrypted" not in str(arrivals)
     assert http.get("/api/v1/admin/arrivals?server_id=999").json() == []
     assert http.get("/api/v1/admin/arrivals?limit=101").status_code == 422
@@ -151,6 +158,8 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
     assert http.post(path, headers=headers, json={"confirm_sent_resend": "true"}).status_code == 422
     assert http.post(path, headers=headers, json={"confirm_sent_resend": True}).status_code == 200
     assert http.get(f"/api/v1/admin/notifications/{item_id}/history").status_code == 200
+    detail = http.get(f"/api/v1/admin/arrivals/{arrivals[0]['event_id']}").json()
+    assert detail["deliveries"][0]["attempts"][0]["error"] == "Manual retry requested"
 
 
 def test_admin_disabled_and_invalid_origin_fail_closed(monkeypatch: pytest.MonkeyPatch, client) -> None:

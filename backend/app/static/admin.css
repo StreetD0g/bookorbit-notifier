@@ -1,23 +1,24 @@
-:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111827; color: #f3f4f6; }
+:root { color-scheme: dark; font-family: system-ui, sans-serif; --page: #111827; --surface: #1f2937; --text: #f3f4f6; --border: #94a3b8; --rule: #475569; --focus: #a7f3d0; background: var(--page); color: var(--text); }
+:root[data-theme="light"] { color-scheme: light; --page: #f1f5f9; --surface: #ffffff; --text: #172033; --border: #475569; --rule: #94a3b8; --focus: #166534; }
 body { margin: 0; line-height: 1.5; }
 main { max-width: 52rem; margin: auto; padding: 1.5rem; }
 header { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
 header h1 { flex: 1 1 20rem; }
-section { background: #1f2937; border-radius: .6rem; padding: 1.5rem; }
+section { background: var(--surface); border-radius: .6rem; padding: 1.5rem; }
 form { display: grid; gap: .6rem; max-width: 30rem; margin: 1rem 0; }
-input, select, textarea, button { font: inherit; padding: .6rem; border-radius: .35rem; border: 1px solid #94a3b8; }
+input, select, textarea, button { font: inherit; padding: .6rem; border-radius: .35rem; border: 1px solid var(--border); }
 button { background: #166534; color: #fff; cursor: pointer; }
-button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #a7f3d0; outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 dl { display: grid; grid-template-columns: 1fr auto; max-width: 30rem; gap: .5rem; }
 dd { margin: 0; font-weight: 700; }
 #message { min-height: 1.5em; }
 .preview-editor { display: grid; gap: .6rem; margin-top: 2rem; padding: 0; }
-.discord-preview { display: flex; gap: .8rem; background: #313338; padding: 1rem; border-radius: .4rem; overflow-wrap: anywhere; }
+.discord-preview { display: flex; gap: .8rem; background: #313338; color: #f3f4f6; padding: 1rem; border-radius: .4rem; overflow-wrap: anywhere; }
 .discord-avatar { display: grid; place-items: center; flex: 0 0 2.5rem; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: #5865f2; font-weight: bold; }
 .discord-embed { background: #2b2d31; border-left: 4px solid #2f855a; border-radius: .3rem; padding: .8rem; margin-top: .5rem; }
 .discord-embed p { white-space: pre-wrap; }
-.management { padding: 1rem 0; border-bottom: 1px solid #475569; }
+.management { padding: 1rem 0; border-bottom: 1px solid var(--rule); }
 .management li { margin: .5rem 0; }
 .management button { margin: .25rem; }
-.library-card { border: 1px solid #475569; border-radius: .35rem; padding: 1rem; margin: .75rem 0; }
+.library-card { border: 1px solid var(--rule); border-radius: .35rem; padding: 1rem; margin: .75rem 0; }
 .library-card label { display: block; margin: .4rem 0; }
