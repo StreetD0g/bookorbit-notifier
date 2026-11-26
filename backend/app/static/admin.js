@@ -72,6 +72,8 @@ Object.assign(messages.de, {loadOriginal: "Originales Webhook-Profil von Discord
 Object.assign(messages.en, {loadOriginal: "Load original webhook profile from Discord", originalLoaded: "Original webhook profile loaded.", originalAvatarLoaded: "Original webhook avatar", originalNoAvatar: "This webhook has no custom avatar."});
 Object.assign(messages.de, {showCover: "Cover in Benachrichtigungen anzeigen", coverPreviewHint: "Die Vorschau und ihre Testnachricht verwenden ein Beispiel-Cover, kein echtes BookOrbit-Cover.", variableUnavailable: "noch nicht verfügbar"});
 Object.assign(messages.en, {showCover: "Show covers in notifications", coverPreviewHint: "The preview and its test message use a sample cover, not a real BookOrbit cover.", variableUnavailable: "not available yet"});
+Object.assign(messages.de, {mainNavigation: "Hauptnavigation", arrivalPages: "Neuzugänge Seiten", historyPages: "Zustellungen Seiten"});
+Object.assign(messages.en, {mainNavigation: "Main navigation", arrivalPages: "Arrival pages", historyPages: "Delivery pages"});
 messages.de.previewOriginal = "Originaler Webhook-Name (nicht abgerufen)";
 messages.en.previewOriginal = "Original webhook name (not retrieved)";
 let counts = null;
@@ -93,6 +95,7 @@ function strings() { return messages[language.value]; }
 function translate() {
   document.documentElement.lang = language.value;
   document.querySelectorAll("[data-text]").forEach(element => { element.textContent = strings()[element.dataset.text]; });
+  document.querySelectorAll("[data-label]").forEach(element => { element.setAttribute("aria-label", strings()[element.dataset.label]); });
   if (counts) renderCounts(counts);
   if (overview) renderOverview(overview);
   renderManagement();

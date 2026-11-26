@@ -39,6 +39,16 @@
       <h2 id="dashboard-title" data-text="overview">Übersicht</h2>
       <button id="refresh" type="button" data-text="refresh">Aktualisieren</button>
       <button id="logout" type="button" data-text="logout">Abmelden</button>
+      <nav class="main-navigation" aria-label="Hauptnavigation" data-label="mainNavigation">
+        <a href="#dashboard-title" data-text="overview">Übersicht</a>
+        <a href="#arrivals-heading" data-text="arrivals">Neuzugänge</a>
+        <a href="#servers-heading" data-text="servers">BookOrbit-Server</a>
+        <a href="#libraries-heading" data-text="libraries">Bibliotheken</a>
+        <a href="#webhooks-heading" data-text="webhooks">Discord-Webhooks</a>
+        <a href="#preview-heading" data-text="previewTitle">Discord-Live-Vorschau</a>
+        <a href="#history-heading" data-text="history">Zustellhistorie</a>
+        <a href="#account-settings" data-text="changePassword">Passwort ändern</a>
+      </nav>
       <p data-text="utcNote">Zeiträume beziehen sich auf UTC. Der Serverstatus zeigt die Konfiguration, keine Live-Erreichbarkeit.</p>
       <dl id="overview-counts"></dl>
       <h3 data-text="dashboard">Benachrichtigungen</h3>
@@ -66,13 +76,13 @@
         </details>
         <button type="button" id="arrivals-refresh" data-text="refresh">Aktualisieren</button>
         <div id="arrivals-list"></div>
-        <nav aria-label="Neuzugänge Seiten">
+        <nav aria-label="Neuzugänge Seiten" data-label="arrivalPages">
           <button type="button" id="arrivals-previous" data-text="previous">Zurück</button>
           <span id="arrivals-page" aria-live="polite"></span>
           <button type="button" id="arrivals-next" data-text="next">Weiter</button>
         </nav>
       </section>
-      <details class="management">
+      <details id="account-settings" class="management">
         <summary data-text="changePassword">Passwort ändern</summary>
         <form id="change-password-form">
           <label for="current-password" data-text="currentPassword">Bisheriges Passwort</label>
@@ -115,7 +125,7 @@
         <label for="history-status" data-text="deliveryStates">Zustellstatus</label>
         <select id="history-status"><option value="" data-text="all">Alle</option><option value="WAITING_FOR_METADATA">WAITING_FOR_METADATA</option><option value="READY">READY</option><option value="QUEUED">QUEUED</option><option value="SENDING">SENDING</option><option value="SENT">SENT</option><option value="RETRY">RETRY</option><option value="FAILED">FAILED</option><option value="SKIPPED">SKIPPED</option></select>
         <div id="delivery-list"></div>
-        <nav aria-label="Zustellungen Seiten"><button type="button" id="history-previous" data-text="previous">Zurück</button><span id="history-page" aria-live="polite"></span><button type="button" id="history-next" data-text="next">Weiter</button></nav>
+        <nav aria-label="Zustellungen Seiten" data-label="historyPages"><button type="button" id="history-previous" data-text="previous">Zurück</button><span id="history-page" aria-live="polite"></span><button type="button" id="history-next" data-text="next">Weiter</button></nav>
       </section>
       <h2 data-text="senderProfile">Absenderprofil</h2>
       <label for="profile-scope" data-text="profileScope">Konfigurationsebene</label>
