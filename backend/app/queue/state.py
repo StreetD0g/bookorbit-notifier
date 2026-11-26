@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app.database.models import Event, EventStatus, NotificationQueueItem, QueueStatus
+from app.database.models import Event, EventStatus, NotificationHistory, NotificationQueueItem, QueueStatus
 
 TERMINAL_QUEUE_STATUSES = {QueueStatus.SENT, QueueStatus.FAILED, QueueStatus.SKIPPED}
 
@@ -95,6 +95,14 @@ def record_delivery_success(
     item.next_retry_at = None
     item.last_error = None
     item.sending_started_at = None
+    session.add(
+        NotificationHistory(
+            queue_item_id=item.id,
+            status=QueueStatus.SENT,
+            attempted_at=item.sent_at,
+            discord_message_id=discord_message_id,
+        )
+    )
     _refresh_event_completion(session, item.event_id)
 
 
@@ -121,6 +129,14 @@ def record_delivery_failure(
     else:
         item.status = QueueStatus.RETRY
         item.next_retry_at = timestamp + timedelta(seconds=_retry_delay_seconds(item.attempt_count, retry_after_seconds))
+    session.add(
+        NotificationHistory(
+            queue_item_id=item.id,
+            status=item.status,
+            attempted_at=timestamp,
+            error=item.last_error,
+        )
+    )
     _refresh_event_completion(session, item.event_id)
 
 
@@ -161,6 +177,14 @@ def recover_stale_sends(session: Session, *, stale_after: timedelta, now: dateti
         item.sending_started_at = None
         item.next_retry_at = timestamp
         item.last_error = "Delivery interrupted before a result was persisted"
+        session.add(
+            NotificationHistory(
+                queue_item_id=item.id,
+                status=QueueStatus.RETRY,
+                attempted_at=timestamp,
+                error=item.last_error,
+            )
+        )
     return len(items)
 
 

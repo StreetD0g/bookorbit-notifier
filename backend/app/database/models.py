@@ -203,6 +203,23 @@ class NotificationQueueItem(Base):
 
     event: Mapped[Event] = relationship(back_populates="deliveries")
     webhook: Mapped[Webhook] = relationship(back_populates="deliveries")
+    history: Mapped[list[NotificationHistory]] = relationship(back_populates="queue_item", cascade="all, delete-orphan")
+
+
+class NotificationHistory(Base):
+    """Immutable delivery-attempt evidence retained when a queue row is retried manually."""
+
+    __tablename__ = "notification_history"
+    __table_args__ = (Index("ix_notification_history_queue_attempted", "queue_item_id", "attempted_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    queue_item_id: Mapped[int] = mapped_column(ForeignKey("notification_queue.id", ondelete="CASCADE"), index=True)
+    status: Mapped[QueueStatus] = mapped_column(Enum(QueueStatus, native_enum=False))
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discord_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    queue_item: Mapped[NotificationQueueItem] = relationship(back_populates="history")
 
 
 class ScanHistory(Base):

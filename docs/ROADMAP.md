@@ -27,11 +27,12 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [x] Implement client-driven paginated source reconciliation and a per-server scan lock.
 - [x] Implement the configurable recurring polling scheduler and core manual-scan trigger.
 - [x] Wire the opt-in scheduler into the application runtime lifecycle after an explicit migration and encryption-key check.
-- [ ] Add the authenticated administrator API/UI control for manual scans.
+- [ ] Expose the existing manual-scan trigger through the authenticated administrator API/UI in Phase 4.
 - [x] Implement transactional per-webhook outbox state transitions, exponential backoff, and Discord retry-hint handling.
 - [x] Implement configurable metadata delay, bounded detail refresh, deadline release, and stale-send recovery.
 - [x] Implement the outbound Discord delivery worker over the persistent outbox.
-- [ ] Add authenticated delivery/recovery observability and manual retry controls.
+- [x] Add persistent per-target delivery history, status summaries, and explicit-confirmation manual retry domain controls.
+- [ ] Expose delivery/recovery observability and retry controls through the authenticated administrator API/UI in Phase 4.
 - [x] Add SQLite- and HTTPX-simulated integration tests for restart recovery, partial scans, source outage, and Discord outage behaviour.
 - [ ] Validate the same acceptance scenarios against a real BookOrbit release and a disposable Discord webhook before production use.
 
