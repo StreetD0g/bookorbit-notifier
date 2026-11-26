@@ -16,3 +16,8 @@ dd { margin: 0; font-weight: 700; }
 .discord-avatar { display: grid; place-items: center; flex: 0 0 2.5rem; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: #5865f2; font-weight: bold; }
 .discord-embed { background: #2b2d31; border-left: 4px solid #2f855a; border-radius: .3rem; padding: .8rem; margin-top: .5rem; }
 .discord-embed p { white-space: pre-wrap; }
+.management { padding: 1rem 0; border-bottom: 1px solid #475569; }
+.management li { margin: .5rem 0; }
+.management button { margin: .25rem; }
+.library-card { border: 1px solid #475569; border-radius: .35rem; padding: 1rem; margin: .75rem 0; }
+.library-card label { display: block; margin: .4rem 0; }

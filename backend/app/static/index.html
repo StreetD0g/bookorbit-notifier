@@ -38,6 +38,30 @@
       <button id="refresh" type="button" data-text="refresh">Aktualisieren</button>
       <button id="logout" type="button" data-text="logout">Abmelden</button>
       <dl id="counts"></dl>
+      <section class="management" aria-labelledby="servers-heading">
+        <h2 id="servers-heading" data-text="servers">BookOrbit-Server</h2>
+        <form id="server-form">
+          <label for="server-name" data-text="name">Name</label><input id="server-name" maxlength="120" required>
+          <label for="server-url" data-text="serverUrl">Server-URL</label><input id="server-url" type="url" maxlength="2048" required>
+          <label for="server-key" data-text="serverKey">BookOrbit-Leseschlüssel</label><input id="server-key" type="password" autocomplete="off" required>
+          <button type="submit" data-text="addServer">Server hinzufügen</button>
+        </form>
+        <ul id="server-list"></ul>
+      </section>
+      <section class="management" aria-labelledby="webhooks-heading">
+        <h2 id="webhooks-heading" data-text="webhooks">Discord-Webhooks</h2>
+        <form id="webhook-form">
+          <label for="webhook-name" data-text="name">Name</label><input id="webhook-name" maxlength="120" required>
+          <label for="webhook-url" data-text="webhookUrl">Webhook-URL</label><input id="webhook-url" type="password" autocomplete="off" required>
+          <button type="submit" data-text="addWebhook">Webhook hinzufügen</button>
+        </form>
+        <ul id="webhook-list"></ul>
+      </section>
+      <section class="management" aria-labelledby="libraries-heading">
+        <h2 id="libraries-heading" data-text="libraries">Bibliotheken</h2>
+        <p data-text="libraryHelp">Bibliotheken werden über den jeweiligen Server aktualisiert. Die erste Erfassung erzeugt keine Benachrichtigungen.</p>
+        <div id="library-list"></div>
+      </section>
       <h2 data-text="senderProfile">Absenderprofil</h2>
       <label for="profile-scope" data-text="profileScope">Konfigurationsebene</label>
       <select id="profile-scope"><option value="global" data-text="globalScope">Global</option><option value="webhook" data-text="webhookScope">Webhook</option><option value="library" data-text="libraryScope">Bibliothek</option></select>

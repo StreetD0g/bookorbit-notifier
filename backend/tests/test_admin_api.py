@@ -1,8 +1,10 @@
 """Exercise the administrator surface through HTTP, including failure paths."""
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,6 +15,7 @@ from app.database.models import Event, Library, NotificationQueueItem, QueueStat
 from app.database.session import create_database_engine
 from app.main import app
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
+from app.schemas.bookorbit import BookOrbitLibrary
 
 ORIGIN = "https://notifier.example"
 SETUP_TOKEN = "setup-token-for-testing-only-123456789"
@@ -180,3 +183,44 @@ def test_preview_renders_verified_variables_and_requires_csrf(client) -> None:
         http.post("/api/v1/admin/template-preview", headers=headers, json={"title": "{{not_allowed}}", "description": ""}).status_code
         == 400
     )
+
+
+def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, engine = client
+    monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    payload = {"name": "Books", "base_url": "https://books.example", "api_key": "bok_fixture_secret"}
+    assert http.post("/api/v1/admin/servers", json=payload).status_code == 403
+    csrf = setup_and_login(http)
+    headers = {"origin": ORIGIN, "x-csrf-token": csrf}
+    assert http.post("/api/v1/admin/servers", headers={"origin": ORIGIN}, json=payload).status_code == 401
+    response = http.post("/api/v1/admin/servers", headers=headers, json=payload)
+    assert response.status_code == 201 and "bok_fixture_secret" not in response.text
+    server_id = response.json()["id"]
+    webhook_payload = {"name": "New", "webhook_url": "https://discord.com/api/webhooks/123/fixture-token"}
+    response = http.post("/api/v1/admin/webhooks", headers=headers, json=webhook_payload)
+    assert response.status_code == 201 and "fixture-token" not in response.text
+    webhook_id = response.json()["id"]
+    assert "bok_fixture_secret" not in http.get("/api/v1/admin/servers").text
+    assert "fixture-token" not in http.get("/api/v1/admin/webhooks").text
+    with Session(engine) as session:
+        assert session.get(Server, server_id).api_key_encrypted != "bok_fixture_secret"
+        assert "fixture-token" not in session.get(Webhook, webhook_id).url_encrypted
+
+    class FakeClient:
+        async def list_libraries(self):
+            return [BookOrbitLibrary(id=12, name="Books")]
+
+    @asynccontextmanager
+    async def fake_connect(_self, _server_id):
+        yield FakeClient()
+
+    monkeypatch.setattr("app.api.admin.EncryptedBookOrbitClientFactory.connect", fake_connect)
+    assert http.post(f"/api/v1/admin/servers/{server_id}/sync-libraries", headers=headers).json() == {"created": 1, "updated": 0}
+    library = http.get("/api/v1/admin/libraries").json()[0]
+    assert library["monitored"] is False
+    routing = {"monitored": True, "webhook_ids": [webhook_id], "template_id": None}
+    assert http.put(f"/api/v1/admin/libraries/{library['id']}/routing", headers=headers, json=routing).status_code == 200
+    assert http.get("/api/v1/admin/libraries").json()[0]["webhook_ids"] == [webhook_id]
+    assert http.post("/api/v1/admin/servers", headers=headers, json=payload).status_code == 409
+    assert http.put(f"/api/v1/admin/servers/{server_id}/enabled", headers=headers, json={"enabled": False}).status_code == 200

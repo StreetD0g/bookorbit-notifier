@@ -15,15 +15,19 @@ Object.assign(messages.de, {senderProfile: "Absenderprofil", profileScope: "Konf
 Object.assign(messages.en, {senderProfile: "Sender profile", profileScope: "Configuration level", globalScope: "Global", webhookScope: "Webhook", libraryScope: "Library", profileTarget: "Selection", noTargets: "No entries exist for this level yet."});
 Object.assign(messages.de, {previewTitle: "Discord-Live-Vorschau", previewHint: "Beispieldaten; Änderungen an dieser Vorschau werden nicht gespeichert oder versendet.", embedTitle: "Titel", embedDescription: "Beschreibung", embedFooter: "Fußzeile", variable: "Variable", insertVariable: "In Beschreibung einfügen", previewInvalid: "Ungültige Vorlage. Bitte prüfe die Variablen.", previewOriginal: "Original / übergeordnet"});
 Object.assign(messages.en, {previewTitle: "Discord live preview", previewHint: "Sample data; preview changes are not saved or sent.", embedTitle: "Title", embedDescription: "Description", embedFooter: "Footer", variable: "Variable", insertVariable: "Insert into description", previewInvalid: "Invalid template. Please check the variables.", previewOriginal: "Original / inherited"});
+Object.assign(messages.de, {servers: "BookOrbit-Server", name: "Name", serverUrl: "Server-URL", serverKey: "BookOrbit-Leseschlüssel", addServer: "Server hinzufügen", webhooks: "Discord-Webhooks", webhookUrl: "Webhook-URL", addWebhook: "Webhook hinzufügen", libraries: "Bibliotheken", libraryHelp: "Bibliotheken werden über den jeweiligen Server aktualisiert. Die erste Erfassung erzeugt keine Benachrichtigungen.", syncLibraries: "Bibliotheken aktualisieren", disable: "Deaktivieren", enable: "Aktivieren", monitored: "Überwachen", saveRouting: "Zuordnung speichern", configuredOk: "Konfiguration gespeichert.", syncOk: "Bibliotheken aktualisiert.", destination: "Discord-Ziele"});
+Object.assign(messages.en, {servers: "BookOrbit servers", name: "Name", serverUrl: "Server URL", serverKey: "BookOrbit read-only key", addServer: "Add server", webhooks: "Discord webhooks", webhookUrl: "Webhook URL", addWebhook: "Add webhook", libraries: "Libraries", libraryHelp: "Refresh libraries from their server. The initial baseline does not generate notifications.", syncLibraries: "Refresh libraries", disable: "Disable", enable: "Enable", monitored: "Monitor", saveRouting: "Save routing", configuredOk: "Configuration saved.", syncOk: "Libraries refreshed.", destination: "Discord destinations"});
 let counts = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
 let previewRequest = 0, previewTimer;
+let servers = [], webhooks = [], libraries = [];
 function strings() { return messages[language.value]; }
 function translate() {
   document.documentElement.lang = language.value;
   document.querySelectorAll("[data-text]").forEach(element => { element.textContent = strings()[element.dataset.text]; });
   if (counts) renderCounts(counts);
+  renderManagement();
   updatePreviewSender();
 }
 function cookie(name) {
@@ -102,6 +106,8 @@ async function selectScope() {
 async function refresh() {
   counts = await call("/notifications/summary");
   scopes = await call("/profile-scopes");
+  [servers, webhooks, libraries] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries")]);
+  renderManagement();
   const variables = await call("/template-variables");
   const variableSelect = document.querySelector("#preview-variable");
   variableSelect.replaceChildren();
@@ -113,6 +119,42 @@ async function refresh() {
   renderCounts(counts);
   authPanel.hidden = true;
   dashboard.hidden = false;
+}
+function mutationOptions(body) {
+  return {method: "PUT", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify(body)};
+}
+function actionButton(label, action) {
+  const button = document.createElement("button"); button.type = "button"; button.textContent = label;
+  button.addEventListener("click", async () => { try { await action(); await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().failed; } });
+  return button;
+}
+function renderManagement() {
+  const serverList = document.querySelector("#server-list"); serverList.replaceChildren();
+  for (const server of servers) {
+    const item = document.createElement("li"); item.append(document.createTextNode(server.name + " — " + server.base_url));
+    item.append(actionButton(server.enabled ? strings().disable : strings().enable, () => call("/servers/" + server.id + "/enabled", mutationOptions({enabled: !server.enabled}))));
+    const sync = actionButton(strings().syncLibraries, () => call("/servers/" + server.id + "/sync-libraries", {...mutationOptions({}), method: "POST"}));
+    sync.disabled = !server.enabled; item.append(sync); serverList.append(item);
+  }
+  const webhookList = document.querySelector("#webhook-list"); webhookList.replaceChildren();
+  for (const webhook of webhooks) { const item = document.createElement("li"); item.textContent = webhook.name; webhookList.append(item); }
+  const libraryList = document.querySelector("#library-list"); libraryList.replaceChildren();
+  for (const library of libraries) {
+    const card = document.createElement("div"); card.className = "library-card";
+    const heading = document.createElement("h3"), server = servers.find(item => item.id === library.server_id);
+    heading.textContent = (server?.name || "") + " — " + library.name; card.append(heading);
+    const monitorLabel = document.createElement("label"), monitored = document.createElement("input");
+    monitored.type = "checkbox"; monitored.checked = library.monitored; monitorLabel.append(monitored, document.createTextNode(" " + strings().monitored)); card.append(monitorLabel);
+    const legend = document.createElement("p"); legend.textContent = strings().destination; card.append(legend);
+    const choices = [];
+    for (const webhook of webhooks) {
+      const label = document.createElement("label"), checkbox = document.createElement("input");
+      checkbox.type = "checkbox"; checkbox.checked = library.webhook_ids.includes(webhook.id); choices.push([webhook.id, checkbox]);
+      label.append(checkbox, document.createTextNode(" " + webhook.name)); card.append(label);
+    }
+    card.append(actionButton(strings().saveRouting, () => call("/libraries/" + library.id + "/routing", mutationOptions({monitored: monitored.checked, webhook_ids: choices.filter(([, checkbox]) => checkbox.checked).map(([id]) => id), template_id: library.template_id}))));
+    libraryList.append(card);
+  }
 }
 language.addEventListener("change", translate);
 document.querySelector("#profile-scope").addEventListener("change", () => selectScope().catch(() => { message.textContent = strings().failed; }));
@@ -143,6 +185,18 @@ document.querySelector("#setup-form").addEventListener("submit", async event => 
 });
 document.querySelector("#refresh").addEventListener("click", async () => {
   try { await refresh(); } catch { message.textContent = strings().failed; }
+});
+document.querySelector("#server-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const name = document.querySelector("#server-name"), url = document.querySelector("#server-url"), key = document.querySelector("#server-key");
+  try { await call("/servers", {...mutationOptions({name: name.value, base_url: url.value, api_key: key.value}), method: "POST"}); name.value = ""; url.value = ""; await refresh(); message.textContent = strings().configuredOk; }
+  catch { message.textContent = strings().failed; } finally { key.value = ""; }
+});
+document.querySelector("#webhook-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const name = document.querySelector("#webhook-name"), url = document.querySelector("#webhook-url");
+  try { await call("/webhooks", {...mutationOptions({name: name.value, webhook_url: url.value}), method: "POST"}); name.value = ""; await refresh(); message.textContent = strings().configuredOk; }
+  catch { message.textContent = strings().failed; } finally { url.value = ""; }
 });
 document.querySelector("#profile-form").addEventListener("submit", async event => {
   event.preventDefault();

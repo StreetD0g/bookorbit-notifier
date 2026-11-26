@@ -7,12 +7,17 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, SecretStr, StrictBool
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
+from app.core.crypto import SecretCipher
 from app.database.models import Book, Library, Server, Webhook
+from app.providers.events.bookorbit.client import BookOrbitApiError
+from app.providers.events.bookorbit.factory import EncryptedBookOrbitClientFactory
 from app.providers.notifications.discord.sender_profile import ProfileChoice, ProfileField, SenderProfile
 from app.queue.worker import _template_values, render_embed
 from app.services.authentication import AuthenticationService
+from app.services.configuration import ConfigurationService, CreateServer, CreateWebhook
 from app.services.notifications import NotificationAdministrationService
 from app.services.sender_profiles import SenderProfileService
 from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES
@@ -55,6 +60,42 @@ class ProfileScopeItem(BaseModel):
 class ProfileScopeList(BaseModel):
     libraries: list[ProfileScopeItem]
     webhooks: list[ProfileScopeItem]
+
+
+class ServerInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    base_url: str = Field(min_length=1, max_length=2048)
+    api_key: SecretStr
+    public_url: str | None = Field(default=None, max_length=2048)
+    scan_interval_seconds: int = Field(default=60, ge=30, le=86400)
+
+
+class WebhookInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    webhook_url: SecretStr
+
+
+class EnabledInput(BaseModel):
+    enabled: StrictBool
+
+
+class LibraryRoutingInput(BaseModel):
+    monitored: StrictBool
+    webhook_ids: list[int] = Field(max_length=100)
+    template_id: int | None = None
+
+
+def _configuration(request: Request) -> ConfigurationService:
+    """Require a separate operator-provided encryption key before handling credentials."""
+
+    encryption_key = get_settings().encryption_key
+    if encryption_key is None:
+        raise HTTPException(status_code=503, detail="Encryption key is not configured")
+    try:
+        cipher = SecretCipher(encryption_key.get_secret_value())
+    except ValueError as error:
+        raise HTTPException(status_code=503, detail="Encryption key is invalid") from error
+    return ConfigurationService(request.app.state.session_factory, cipher)
 
 
 def _context(request: Request) -> tuple[AuthenticationService, str, bool]:
@@ -205,6 +246,131 @@ def profile_scopes(request: Request, _auth: Annotated[AuthenticationService, Dep
             libraries=[ProfileScopeItem(id=row[0], name=row[1], server_name=row[2]) for row in libraries],
             webhooks=[ProfileScopeItem(id=row[0], name=row[1]) for row in webhooks],
         )
+
+
+@router.get("/servers")
+def list_servers(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> list[dict]:
+    """List source configuration without returning the stored API key."""
+
+    with request.app.state.session_factory() as session:
+        servers = session.scalars(select(Server).order_by(Server.name, Server.id)).all()
+        return [
+            {
+                "id": server.id,
+                "name": server.name,
+                "base_url": server.base_url,
+                "enabled": server.enabled,
+                "scan_interval_seconds": server.scan_interval_seconds,
+            }
+            for server in servers
+        ]
+
+
+@router.post("/servers", status_code=status.HTTP_201_CREATED)
+def create_server(request: Request, payload: ServerInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]):
+    """Persist a source key encrypted; discovery remains an explicit read-only action."""
+
+    try:
+        return _configuration(request).create_server(
+            CreateServer(
+                name=payload.name,
+                base_url=payload.base_url,
+                api_key=payload.api_key.get_secret_value(),
+                public_url=payload.public_url,
+                scan_interval_seconds=payload.scan_interval_seconds,
+            )
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Server name already exists") from error
+
+
+@router.put("/servers/{server_id}/enabled")
+def set_server_enabled(
+    request: Request, server_id: int, payload: EnabledInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str]:
+    """Pause or resume scanning without deleting inventory or notification history."""
+
+    with request.app.state.session_factory() as session, session.begin():
+        server = session.get(Server, server_id)
+        if server is None:
+            raise HTTPException(status_code=404, detail="Server not found")
+        server.enabled = payload.enabled
+    return {"status": "saved"}
+
+
+@router.post("/servers/{server_id}/sync-libraries")
+async def sync_libraries(
+    request: Request, server_id: int, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, int]:
+    """Synchronize accessible library names using the stored read-only API key."""
+
+    service = _configuration(request)
+    cipher = SecretCipher(get_settings().encryption_key.get_secret_value())  # type: ignore[union-attr]
+    factory = EncryptedBookOrbitClientFactory(request.app.state.session_factory, cipher)
+    try:
+        async with factory.connect(server_id) as client:
+            source_libraries = await client.list_libraries()
+        result = service.synchronize_libraries(server_id, source_libraries)
+    except (BookOrbitApiError, ValueError) as error:
+        raise HTTPException(status_code=502, detail="Library discovery failed") from error
+    return {"created": result.created, "updated": result.updated}
+
+
+@router.get("/webhooks")
+def list_webhooks(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> list[dict]:
+    """Never include webhook URLs or ciphertext in the response."""
+
+    with request.app.state.session_factory() as session:
+        rows = session.scalars(select(Webhook).order_by(Webhook.name, Webhook.id)).all()
+        return [{"id": row.id, "name": row.name, "enabled": row.enabled} for row in rows]
+
+
+@router.post("/webhooks", status_code=status.HTTP_201_CREATED)
+def create_webhook(request: Request, payload: WebhookInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]):
+    """Validate an official Discord endpoint and persist its URL encrypted."""
+
+    try:
+        return _configuration(request).create_webhook(CreateWebhook(name=payload.name, webhook_url=payload.webhook_url.get_secret_value()))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Webhook name already exists") from error
+
+
+@router.get("/libraries")
+def list_libraries(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> list[dict]:
+    """Return current routing by source IDs, with no source or destination secrets."""
+
+    with request.app.state.session_factory() as session:
+        rows = session.scalars(select(Library).order_by(Library.server_id, Library.name, Library.id)).all()
+        return [
+            {
+                "id": row.id,
+                "server_id": row.server_id,
+                "name": row.name,
+                "monitored": row.monitored,
+                "webhook_ids": [webhook.id for webhook in row.webhooks],
+                "template_id": row.template_id,
+            }
+            for row in rows
+        ]
+
+
+@router.put("/libraries/{library_id}/routing")
+def configure_library_routing(
+    request: Request, library_id: int, payload: LibraryRoutingInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str]:
+    """Assign destinations while leaving the source library and its content untouched."""
+
+    try:
+        _configuration(request).configure_library_routing(
+            library_id, monitored=payload.monitored, webhook_ids=payload.webhook_ids, template_id=payload.template_id
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {"status": "saved"}
 
 
 @router.get("/template-variables")
