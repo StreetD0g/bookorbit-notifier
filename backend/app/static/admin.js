@@ -82,6 +82,8 @@ Object.assign(messages.de, {serverScanOverview: "Letzter Bibliotheksscan je Serv
 Object.assign(messages.en, {serverScanOverview: "Latest library scan per server", serverScanHelp: "The latest recorded library scan is not a live connection check and does not evaluate every library on a server.", scanUnknown: "No library scan recorded yet", scanDisabled: "Disabled", scanSucceeded: "Succeeded", scanPartial: "Incomplete", scanFailed: "Failed"});
 Object.assign(messages.de, {nextScan: "Nächster geplanter Scan", runtimeOff: "Automatische Verarbeitung deaktiviert", runtimeOn: "Automatische Verarbeitung aktiviert", nextScanHint: "Scanzeiten sind geplante Zeitpunkte und können sich durch laufende Aufgaben verzögern."});
 Object.assign(messages.en, {nextScan: "Next scheduled scan", runtimeOff: "Automatic processing disabled", runtimeOn: "Automatic processing enabled", nextScanHint: "Scan times are scheduled estimates and may be delayed by ongoing work."});
+Object.assign(messages.de, {scanHistory: "Scan-Protokoll", scanHistoryHelp: "Ergebnisse einzelner Bibliotheksscans in UTC. Verbindungsdaten und Fehlermeldungen werden nicht angezeigt.", scanFrom: "Abgeschlossen ab (UTC)", scanTo: "Abgeschlossen bis (UTC)", scanPages: "Scan-Protokoll Seiten", scanStarted: "Begonnen", scanCompleted: "Abgeschlossen", scanSeen: "Medien erfasst", scanAdded: "Neu erfasst", noScans: "Keine Scans für diese Auswahl."});
+Object.assign(messages.en, {scanHistory: "Scan history", scanHistoryHelp: "Results of individual library scans in UTC. Connection details and error messages are not shown.", scanFrom: "Completed from (UTC)", scanTo: "Completed through (UTC)", scanPages: "Scan history pages", scanStarted: "Started", scanCompleted: "Completed", scanSeen: "Media seen", scanAdded: "Newly recorded", noScans: "No scans match these filters."});
 messages.de.loadCover = "Cover laden";
 messages.en.loadCover = "Load cover";
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
@@ -103,10 +105,11 @@ let templates = [];
 let arrivals = [];
 let arrivalsRequest = 0;
 let arrivalsOffset = 0;
+let scanRows = [], scanOffset = 0, scanRequest = 0, scanHasMore = false;
 function strings() { return messages[language.value]; }
 
 // Changing views only hides existing controls, so unsaved editor input is retained.
-const viewCategories = {overview: "overview", libraries: "bookorbit", presets: "presets", arrivals: "imports", history: "discord", servers: "settings", webhooks: "settings", sender: "settings"};
+const viewCategories = {overview: "overview", libraries: "bookorbit", presets: "presets", arrivals: "imports", "scan-history": "imports", history: "discord", servers: "settings", webhooks: "settings", sender: "settings"};
 const legacyViews = {"dashboard-title": "overview", "arrivals-heading": "arrivals", "servers-heading": "servers", "libraries-heading": "libraries", "webhooks-heading": "webhooks", "preview-heading": "presets", "history-heading": "history", "account-settings": "servers"};
 function selectView() {
   const fragment = location.hash.slice(1);
@@ -138,6 +141,7 @@ function translate() {
   }
   populateArrivalFilters();
   renderArrivals();
+  renderScanHistory();
   updatePreviewSender();
 }
 function cookie(name) {
@@ -302,7 +306,9 @@ async function refresh() {
   [servers, webhooks, libraries, templates] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries"), call("/templates")]);
   await loadDeliveries();
   populateArrivalFilters();
+  populateScanFilters();
   await loadArrivals();
+  await loadScanHistory();
   populateTemplateSelector();
   renderManagement();
   renderDeliveries();
@@ -342,6 +348,39 @@ function fillFilter(select, entries, previous) {
   for (const entry of entries) { const option = document.createElement("option"); option.value = String(entry.id); option.textContent = entry.name; select.append(option); }
   if ([...select.options].some(option => option.value === previous)) select.value = previous;
 }
+function populateScanFilters() {
+  const server = document.querySelector("#scan-server"), library = document.querySelector("#scan-library");
+  const previousServer = server.value, previousLibrary = library.value;
+  fillFilter(server, servers, previousServer);
+  fillFilter(library, libraries.filter(entry => !server.value || String(entry.server_id) === server.value), previousLibrary);
+}
+async function loadScanHistory() {
+  const request = ++scanRequest, params = new URLSearchParams({offset: String(scanOffset)});
+  for (const [selector, key] of [["#scan-server", "server_id"], ["#scan-library", "library_id"], ["#scan-status", "scan_status"], ["#scan-from", "from_date"], ["#scan-to", "to_date"]]) {
+    const value = document.querySelector(selector).value; if (value) params.set(key, value);
+  }
+  const result = await call("/scan-history?" + params.toString());
+  if (request !== scanRequest) return;
+  scanRows = result.items; scanHasMore = result.has_more; renderScanHistory();
+}
+function renderScanHistory() {
+  const container = document.querySelector("#scan-history-list"); container.replaceChildren();
+  document.querySelector("#scan-previous").disabled = scanOffset === 0;
+  document.querySelector("#scan-next").disabled = !scanHasMore;
+  document.querySelector("#scan-page").textContent = strings().page + " " + (Math.floor(scanOffset / 50) + 1);
+  if (!scanRows.length) { const empty = document.createElement("p"); empty.textContent = strings().noScans; container.append(empty); return; }
+  for (const scan of scanRows) {
+    const item = document.createElement("article"); item.className = "library-card";
+    const title = document.createElement("h3"); title.textContent = scan.server_name + " · " + scan.library_name; item.append(title);
+    const status = document.createElement("p"); status.textContent = {SUCCEEDED: strings().scanSucceeded, PARTIAL: strings().scanPartial, FAILED: strings().scanFailed}[scan.status] || scan.status; item.append(status);
+    const info = document.createElement("p"); info.textContent = [strings().scanStarted + ": " + scan.started_at, strings().scanCompleted + ": " + scan.completed_at, strings().scanSeen + ": " + scan.books_seen, strings().scanAdded + ": " + scan.books_added].join(" · "); item.append(info);
+    container.append(item);
+  }
+}
+document.querySelector("#scan-server").addEventListener("change", populateScanFilters);
+document.querySelector("#scan-history-filters").addEventListener("submit", event => { event.preventDefault(); scanOffset = 0; loadScanHistory().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#scan-previous").addEventListener("click", () => { scanOffset = Math.max(0, scanOffset - 50); loadScanHistory().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#scan-next").addEventListener("click", () => { scanOffset += 50; loadScanHistory().catch(() => { message.textContent = strings().failed; }); });
 function populateArrivalFilters() {
   const server = document.querySelector("#arrivals-server"), library = document.querySelector("#arrivals-library");
   const serverValue = server.value, libraryValue = library.value;

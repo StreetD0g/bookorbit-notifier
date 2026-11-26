@@ -29,7 +29,7 @@ test("navigation selects the requested section and retains unsaved controls", ()
   const end = source.indexOf("function translate()", start);
   assert.ok(start >= 0 && end > start);
   vm.runInNewContext(source.slice(start, end), context);
-  const cases = {"#view-overview": ["overview", "overview"], "#view-libraries": ["libraries", "bookorbit"], "#view-presets": ["presets", "presets"], "#view-arrivals": ["arrivals", "imports"], "#view-history": ["history", "discord"], "#view-servers": ["servers", "settings"], "#view-webhooks": ["webhooks", "settings"], "#view-sender": ["sender", "settings"], "#servers-heading": ["servers", "settings"], "#unknown": ["overview", "overview"]};
+  const cases = {"#view-overview": ["overview", "overview"], "#view-libraries": ["libraries", "bookorbit"], "#view-presets": ["presets", "presets"], "#view-arrivals": ["arrivals", "imports"], "#view-scan-history": ["scan-history", "imports"], "#view-history": ["history", "discord"], "#view-servers": ["servers", "settings"], "#view-webhooks": ["webhooks", "settings"], "#view-sender": ["sender", "settings"], "#servers-heading": ["servers", "settings"], "#unknown": ["overview", "overview"]};
   for (const [hash, [view, category]] of Object.entries(cases)) {
     location.hash = hash; listeners.hashchange();
     assert.deepEqual(new Set(groups["[data-view]"].filter(item => !item.hidden).map(item => item.dataset.view)), new Set([view]));

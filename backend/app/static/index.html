@@ -51,6 +51,7 @@
         <a href="#view-libraries" data-menu="bookorbit" data-text="libraries" hidden>Bibliotheken</a>
         <a href="#view-presets" data-menu="presets" data-text="previewTitle" hidden>Discord-Live-Vorschau</a>
         <a href="#view-arrivals" data-menu="imports" data-text="arrivals" hidden>Neuzugänge</a>
+        <a href="#view-scan-history" data-menu="imports" data-text="scanHistory" hidden>Scan-Protokoll</a>
         <a href="#view-history" data-menu="discord" data-text="history" hidden>Zustellhistorie</a>
         <a href="#view-servers" data-menu="settings" data-text="servers" hidden>BookOrbit-Server</a>
         <a href="#view-webhooks" data-menu="settings" data-text="webhooks" hidden>Discord-Webhooks</a>
@@ -98,6 +99,20 @@
           <span id="arrivals-page" aria-live="polite"></span>
           <button type="button" id="arrivals-next" data-text="next">Weiter</button>
         </nav>
+      </section>
+      <section id="view-scan-history" data-view="scan-history" class="management" aria-labelledby="scan-history-heading" hidden>
+        <h2 id="scan-history-heading" data-text="scanHistory">Scan-Protokoll</h2>
+        <p data-text="scanHistoryHelp">Ergebnisse einzelner Bibliotheksscans in UTC. Verbindungsdaten und Fehlermeldungen werden nicht angezeigt.</p>
+        <form id="scan-history-filters">
+          <label for="scan-server" data-text="arrivalsServer">Server</label><select id="scan-server"></select>
+          <label for="scan-library" data-text="arrivalsLibrary">Bibliothek</label><select id="scan-library"></select>
+          <label for="scan-status" data-text="arrivalStatus">Status</label><select id="scan-status"><option value="" data-text="all">Alle</option><option value="SUCCEEDED" data-text="scanSucceeded">Erfolgreich</option><option value="PARTIAL" data-text="scanPartial">Unvollständig</option><option value="FAILED" data-text="scanFailed">Fehlgeschlagen</option></select>
+          <label for="scan-from" data-text="scanFrom">Abgeschlossen ab (UTC)</label><input id="scan-from" type="date">
+          <label for="scan-to" data-text="scanTo">Abgeschlossen bis (UTC)</label><input id="scan-to" type="date">
+          <button type="submit" data-text="applyFilters">Filter anwenden</button>
+        </form>
+        <div id="scan-history-list"></div>
+        <nav aria-label="Scan-Protokoll Seiten" data-label="scanPages"><button type="button" id="scan-previous" data-text="previous">Zurück</button><span id="scan-page" aria-live="polite"></span><button type="button" id="scan-next" data-text="next">Weiter</button></nav>
       </section>
       <details id="account-settings" data-view="servers" class="management" hidden>
         <summary data-text="changePassword">Passwort ändern</summary>

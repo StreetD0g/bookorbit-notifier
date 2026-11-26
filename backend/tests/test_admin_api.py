@@ -1,6 +1,7 @@
 """Exercise the administrator surface through HTTP, including failure paths."""
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,7 +13,18 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.database.base import Base
-from app.database.models import Book, Event, EventType, Library, NotificationQueueItem, QueueStatus, Server, Webhook
+from app.database.models import (
+    Book,
+    Event,
+    EventType,
+    Library,
+    NotificationQueueItem,
+    QueueStatus,
+    ScanHistory,
+    ScanStatus,
+    Server,
+    Webhook,
+)
 from app.database.session import create_database_engine
 from app.main import app
 from app.providers.events.bookorbit.client import BookOrbitApiError
@@ -110,6 +122,44 @@ def test_dashboard_reports_runtime_schedule_only_for_enabled_servers(client, mon
     assert result["runtime_enabled"] is True
     assert [server["next_scan_at"] for server in result["servers"]] == ["scheduled", None]
     assert "secret" not in str(result)
+
+
+def test_scan_history_is_authenticated_paginated_filtered_and_redacted(client) -> None:
+    http, engine = client
+    assert http.get("/api/v1/admin/scan-history").status_code == 401
+    setup_and_login(http)
+    with Session(engine) as session:
+        server = Server(name="Source", base_url="https://private.example", api_key_encrypted="key-secret")
+        library = Library(server=server, name="Library", bookorbit_library_id=1)
+        session.add_all([server, library])
+        session.flush()
+        for day, status in [(1, ScanStatus.SUCCEEDED), (2, ScanStatus.PARTIAL), (3, ScanStatus.FAILED)]:
+            session.add(
+                ScanHistory(
+                    server_id=server.id,
+                    library_id=library.id,
+                    status=status,
+                    started_at=datetime(2026, 1, day, tzinfo=UTC),
+                    completed_at=datetime(2026, 1, day, tzinfo=UTC),
+                    books_seen=10,
+                    books_added=2,
+                    error_message="webhook-secret",
+                )
+            )
+        session.commit()
+    response = http.get("/api/v1/admin/scan-history?limit=2")
+    assert response.status_code == 200
+    assert [row["status"] for row in response.json()["items"]] == ["FAILED", "PARTIAL"]
+    assert response.json()["has_more"] is True
+    assert all(secret not in response.text for secret in ["key-secret", "webhook-secret", "private.example"])
+    assert http.get("/api/v1/admin/scan-history?limit=2&offset=2").json()["has_more"] is False
+    filtered = http.get(
+        "/api/v1/admin/scan-history?scan_status=PARTIAL&server_id=1&library_id=1&from_date=2026-01-02&to_date=2026-01-02"
+    ).json()
+    assert len(filtered["items"]) == 1 and filtered["items"][0]["books_seen"] == 10
+    assert http.get("/api/v1/admin/scan-history?from_date=2026-01-03&to_date=2026-01-01").status_code == 400
+    assert http.get("/api/v1/admin/scan-history?scan_status=BAD").status_code == 422
+    assert http.get("/api/v1/admin/scan-history?limit=101").status_code == 422
 
 
 def test_retry_sent_requires_confirmation_and_csrf(client) -> None:

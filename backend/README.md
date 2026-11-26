@@ -28,6 +28,8 @@ The administrator menu separates the overview, libraries, webhook presets, arriv
 
 The overview lists each server's most recently recorded library-scan result and, while the runtime is active, its next scheduled scan when available. A library scan is a historical observation, not a live connectivity test or an aggregate assessment of every library; scheduled times can be delayed by ongoing work and are reset when the process restarts.
 
+Import Logs also includes a paginated library-scan history with server, library, result and UTC date filters. It displays scan times and counts but deliberately excludes stored error messages and connection details. This is not yet the full application log viewer or automatic log rotation.
+
 Existing server URLs cannot be changed in place because existing library and book IDs belong to that source; create a new server configuration for another instance. Rotating a stored webhook URL requires explicit confirmation because pending deliveries will use the replacement destination. A manual scan is available only with the opt-in runtime enabled; it does not itself trigger an unrelated delivery pass.
 
 The `{{series_tag}}` variable is empty when the book has no series. Each template has two editable formats: the numbered format (for example `Part {{series_index}} of {{series}}`) and the fallback when a series has no number (for example `{{series}}`). The editor can preview both cases and a book without a series. These formats accept literal text and only the `{{series}}` and `{{series_index}}` placeholders; they do not execute code. Existing templates keep their current fields and receive default formats during migration.

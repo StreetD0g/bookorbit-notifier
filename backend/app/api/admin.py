@@ -24,6 +24,7 @@ from app.database.models import (
     NotificationTemplate,
     QueueStatus,
     ScanHistory,
+    ScanStatus,
     Server,
     Webhook,
 )
@@ -337,6 +338,59 @@ def list_notifications(
     return NotificationAdministrationService(request.app.state.session_factory).list_deliveries(
         limit=limit, offset=offset, status=delivery_status
     )
+
+
+@router.get("/scan-history")
+def scan_history(
+    request: Request,
+    _auth: Annotated[AuthenticationService, Depends(_authenticated)],
+    server_id: int | None = Query(default=None, gt=0),
+    library_id: int | None = Query(default=None, gt=0),
+    scan_status: ScanStatus | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    """List bounded scan outcomes without exposing untrusted stored error messages."""
+
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise HTTPException(status_code=400, detail="Scan date range is invalid")
+    with request.app.state.session_factory() as session:
+        query = (
+            select(ScanHistory, Server.name, Library.name)
+            .join(Server, Server.id == ScanHistory.server_id)
+            .join(Library, Library.id == ScanHistory.library_id)
+        )
+        if server_id is not None:
+            query = query.where(ScanHistory.server_id == server_id)
+        if library_id is not None:
+            query = query.where(ScanHistory.library_id == library_id)
+        if scan_status is not None:
+            query = query.where(ScanHistory.status == scan_status)
+        if from_date is not None:
+            query = query.where(ScanHistory.completed_at >= datetime.combine(from_date, time.min, tzinfo=UTC))
+        if to_date is not None and to_date != date.max:
+            query = query.where(ScanHistory.completed_at < datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=UTC))
+        rows = session.execute(query.order_by(ScanHistory.completed_at.desc(), ScanHistory.id.desc()).limit(limit + 1).offset(offset)).all()
+        return {
+            "items": [
+                {
+                    "id": scan.id,
+                    "server_id": scan.server_id,
+                    "server_name": server,
+                    "library_id": scan.library_id,
+                    "library_name": library,
+                    "status": scan.status,
+                    "started_at": scan.started_at,
+                    "completed_at": scan.completed_at,
+                    "books_seen": scan.books_seen,
+                    "books_added": scan.books_added,
+                }
+                for scan, server, library in rows[:limit]
+            ],
+            "has_more": len(rows) > limit,
+        }
 
 
 @router.get("/arrivals")
