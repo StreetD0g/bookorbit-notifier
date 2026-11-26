@@ -60,6 +60,18 @@ class DeliveryMode(StrEnum):
     DAILY_SUMMARY = "DAILY_SUMMARY"
 
 
+class SenderProfileConfig(Base):
+    """Persist independent profile fields for a global, webhook, or library scope."""
+
+    __tablename__ = "sender_profile_configs"
+
+    scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    username_choice: Mapped[str] = mapped_column(String(16), nullable=False)
+    username_value: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    avatar_choice: Mapped[str] = mapped_column(String(16), nullable=False)
+    avatar_value: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+
+
 class ScanStatus(StrEnum):
     """A scan can be useful but incomplete; incomplete scans never imply removal."""
 

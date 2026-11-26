@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
@@ -14,6 +14,7 @@ from app.database.models import Book, DeliveryMode, Event, Webhook
 from app.providers.notifications.discord.client import DiscordDeliveryError, DiscordWebhookClient
 from app.queue.state import DeliveryClaim, claim_due_deliveries, record_delivery_failure, record_delivery_success, recover_stale_sends
 from app.schemas.bookorbit import CoverImage
+from app.services.sender_profiles import SenderProfileService
 from app.templates.safe import render_template
 
 type SessionFactory = Callable[[], Session]
@@ -25,6 +26,8 @@ class WebhookTarget:
 
     webhook_id: int
     webhook_url: str
+    username: str | None = None
+    avatar_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +165,9 @@ class DiscordNotificationSender:
 
         client = DiscordWebhookClient(target.webhook_url)
         try:
-            return await client.send_embed(notification.embed, cover=notification.cover)
+            return await client.send_embed(
+                notification.embed, cover=notification.cover, username=target.username, avatar_url=target.avatar_url
+            )
         finally:
             await client.aclose()
 
@@ -173,7 +178,9 @@ class DiscordNotificationSender:
             raise ValueError("Grouped Discord delivery does not support cover attachments")
         client = DiscordWebhookClient(target.webhook_url)
         try:
-            return await client.send_embeds([notification.embed for notification in notifications])
+            return await client.send_embeds(
+                [notification.embed for notification in notifications], username=target.username, avatar_url=target.avatar_url
+            )
         finally:
             await client.aclose()
 
@@ -199,6 +206,7 @@ class DiscordDeliveryWorker:
         self._target_resolver = target_resolver
         self._notification_builder = notification_builder
         self._sender = sender or DiscordNotificationSender()
+        self._profiles = SenderProfileService(session_factory)
         self._stale_after = stale_after
         self._max_attempts = max_attempts
 
@@ -240,7 +248,7 @@ class DiscordDeliveryWorker:
         """Send one target and reduce every failure to a redacted persistent state."""
 
         try:
-            target = self._target_resolver.resolve(claim.webhook_id)
+            target = self._target_for_claim(claim)
             notification = self._notification_builder.build(claim.event_id)
             message_id, _status_code = await self._sender.send(target, notification)
         except DiscordDeliveryError as error:
@@ -260,7 +268,7 @@ class DiscordDeliveryWorker:
         """Send a bounded group as one Discord message while preserving each row's status."""
 
         try:
-            target = self._target_resolver.resolve(claims[0].webhook_id)
+            target = self._target_for_claim(claims[0])
             notifications = [self._notification_builder.build(claim.event_id) for claim in claims]
             if any(notification.cover is not None for notification in notifications):
                 return [await self._deliver_claim(claim, now) for claim in claims]
@@ -278,6 +286,13 @@ class DiscordDeliveryWorker:
                 with session.begin():
                     record_delivery_success(session, queue_item_id=claim.queue_item_id, discord_message_id=message_id, sent_at=now)
         return ["sent"] * len(claims)
+
+    def _target_for_claim(self, claim: DeliveryClaim) -> WebhookTarget:
+        """Resolve profiles at send time separately for each library and destination."""
+
+        target = self._target_resolver.resolve(claim.webhook_id)
+        username, avatar_url = self._profiles.resolve(claim.library_id, claim.webhook_id)
+        return replace(target, username=username, avatar_url=avatar_url)
 
     def _record_failure(self, claim: DeliveryClaim, summary: str, retry_after_seconds: float | None, now: datetime) -> None:
         """Persist a retry/final failure for exactly the claimed webhook row."""
