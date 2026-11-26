@@ -12,6 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "BookOrbit Notifier contributors" }]
 dependencies = [
   "alembic>=1.14,<2.0",
+  "argon2-cffi>=23.1,<26.0",
   "cryptography>=43,<46",
   "fastapi>=0.115,<1.0",
   "httpx>=0.27,<1.0",
