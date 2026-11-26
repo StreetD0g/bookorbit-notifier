@@ -1,0 +1,18 @@
+# Local deployment credentials. Never commit these files.
+pre_prod_secrets.env
+*.env
+!.env.example
+
+# Runtime and generated application data.
+data/
+backups/
+.pytest_cache/
+__pycache__/
+.venv/
+node_modules/
+dist/
+coverage/
+.DS_Store
+
+# Read-only checkout used for upstream API research.
+.research/
