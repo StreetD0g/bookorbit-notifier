@@ -46,6 +46,17 @@ class SenderProfileService:
             global_profile = _load(session, "global", DEFAULT_PROFILE)
             return resolve_profile(library, webhook, global_profile)
 
+    def get(self, scope: str, scope_id: int | None) -> SenderProfile:
+        """Read one scope, preserving whether each field inherits or uses the original."""
+
+        key = _scope_key(scope, scope_id)
+        with self._session_factory() as session:
+            if scope == "library" and session.get(Library, scope_id) is None:
+                raise ValueError("Library does not exist")
+            if scope == "webhook" and session.get(Webhook, scope_id) is None:
+                raise ValueError("Webhook does not exist")
+            return _load(session, key, DEFAULT_PROFILE if scope == "global" else SenderProfile())
+
 
 def _scope_key(scope: str, scope_id: int | None) -> str:
     if scope == "global" and scope_id is None:

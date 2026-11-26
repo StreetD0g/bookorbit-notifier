@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BookOrbit Notifier</title>
+  <link rel="stylesheet" href="/admin-assets/admin.css">
+  <script defer src="/admin-assets/admin.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>BookOrbit Notifier</h1>
+      <label for="language" data-text="language">Sprache</label>
+      <select id="language"><option value="de">Deutsch</option><option value="en">English</option></select>
+    </header>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section id="auth-panel" aria-labelledby="login-title">
+      <h2 id="login-title" data-text="login">Anmelden</h2>
+      <form id="login-form">
+        <label for="password" data-text="password">Passwort</label>
+        <input id="password" type="password" autocomplete="current-password" required maxlength="1024">
+        <button type="submit" data-text="login">Anmelden</button>
+      </form>
+      <details>
+        <summary data-text="setup">Ersteinrichtung</summary>
+        <form id="setup-form">
+          <label for="setup-token" data-text="setupToken">Einrichtungsschlüssel</label>
+          <input id="setup-token" type="password" autocomplete="off" required maxlength="1024">
+          <label for="new-password" data-text="newPassword">Neues Passwort (mindestens 12 Zeichen)</label>
+          <input id="new-password" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required>
+          <button type="submit" data-text="createAccount">Administratorkonto erstellen</button>
+        </form>
+      </details>
+    </section>
+    <section id="dashboard" aria-labelledby="dashboard-title" hidden>
+      <h2 id="dashboard-title" data-text="dashboard">Benachrichtigungen</h2>
+      <button id="refresh" type="button" data-text="refresh">Aktualisieren</button>
+      <button id="logout" type="button" data-text="logout">Abmelden</button>
+      <dl id="counts"></dl>
+      <h2 data-text="globalProfile">Globales Absenderprofil</h2>
+      <form id="profile-form">
+        <label for="username-choice" data-text="senderName">Absendername</label>
+        <select id="username-choice"><option value="inherit" data-text="inherit">Übernehmen</option><option value="original" data-text="original">Webhook-Original</option><option value="custom" data-text="custom">Benutzerdefiniert</option></select>
+        <label for="username-value" data-text="nameValue">Benutzerdefinierter Name</label>
+        <input id="username-value" type="text" maxlength="80">
+        <label for="avatar-choice" data-text="avatar">Profilbild</label>
+        <select id="avatar-choice"><option value="inherit" data-text="inherit">Übernehmen</option><option value="original" data-text="original">Webhook-Original</option><option value="custom" data-text="custom">Benutzerdefiniert</option></select>
+        <label for="avatar-value" data-text="avatarValue">Öffentliche HTTPS-Bild-URL</label>
+        <input id="avatar-value" type="url" maxlength="2048">
+        <button type="submit" data-text="save">Speichern</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

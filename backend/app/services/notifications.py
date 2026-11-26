@@ -20,6 +20,7 @@ class NotificationStatusSummary:
 
     waiting_for_metadata: int
     ready: int
+    queued: int
     sending: int
     retry: int
     sent: int
@@ -56,6 +57,7 @@ class NotificationAdministrationService:
         return NotificationStatusSummary(
             waiting_for_metadata=counts.get(QueueStatus.WAITING_FOR_METADATA, 0),
             ready=counts.get(QueueStatus.READY, 0),
+            queued=counts.get(QueueStatus.QUEUED, 0),
             sending=counts.get(QueueStatus.SENDING, 0),
             retry=counts.get(QueueStatus.RETRY, 0),
             sent=counts.get(QueueStatus.SENT, 0),

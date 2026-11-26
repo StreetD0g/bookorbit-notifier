@@ -1,0 +1,13 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111827; color: #f3f4f6; }
+body { margin: 0; line-height: 1.5; }
+main { max-width: 52rem; margin: auto; padding: 1.5rem; }
+header { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+header h1 { flex: 1 1 20rem; }
+section { background: #1f2937; border-radius: .6rem; padding: 1.5rem; }
+form { display: grid; gap: .6rem; max-width: 30rem; margin: 1rem 0; }
+input, select, button { font: inherit; padding: .6rem; border-radius: .35rem; border: 1px solid #94a3b8; }
+button { background: #166534; color: #fff; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #a7f3d0; outline-offset: 2px; }
+dl { display: grid; grid-template-columns: 1fr auto; max-width: 30rem; gap: .5rem; }
+dd { margin: 0; font-weight: 700; }
+#message { min-height: 1.5em; }

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/bookorbit-notifier.db"
     encryption_key: SecretStr | None = None
     runtime_enabled: bool = False
+    admin_enabled: bool = False
+    admin_origin: str | None = None
+    setup_token: SecretStr | None = None
 
 
 @lru_cache
