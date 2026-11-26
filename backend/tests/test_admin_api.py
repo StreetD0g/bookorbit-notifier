@@ -136,3 +136,28 @@ def test_sender_profiles_require_session_origin_and_csrf(client) -> None:
     assert http.put(path, headers=headers, json=payload).status_code == 400
     assert http.get(path).json()["avatar_url"]["choice"] == "original"
     assert http.get("/api/v1/admin/sender-profiles/library?scope_id=999").status_code == 400
+
+
+def test_profile_scope_list_is_authenticated_and_redacted(client) -> None:
+    http, engine = client
+    assert http.get("/api/v1/admin/profile-scopes").status_code == 401
+    with Session(engine) as session:
+        server = Server(name="Example server", base_url="https://private.example", api_key_encrypted="secret-api-key")
+        library = Library(server=server, name="Books", bookorbit_library_id=42)
+        session.add_all([library, Webhook(name="New books", url_encrypted="secret-webhook")])
+        session.commit()
+    csrf = setup_and_login(http)
+    result = http.get("/api/v1/admin/profile-scopes")
+    assert result.status_code == 200
+    assert result.json()["libraries"] == [{"id": 1, "name": "Books", "server_name": "Example server"}]
+    assert result.json()["webhooks"] == [{"id": 1, "name": "New books", "server_name": None}]
+    assert "secret" not in result.text and "private.example" not in result.text
+    profile = {"username": {"choice": "custom", "value": "Books"}, "avatar_url": {"choice": "inherit"}}
+    assert http.put("/api/v1/admin/sender-profiles/library?scope_id=1", headers={"origin": ORIGIN}, json=profile).status_code == 401
+    assert (
+        http.put(
+            "/api/v1/admin/sender-profiles/library?scope_id=1", headers={"origin": ORIGIN, "x-csrf-token": csrf}, json=profile
+        ).status_code
+        == 200
+    )
+    assert http.get("/api/v1/admin/sender-profiles/library?scope_id=1").json()["username"]["value"] == "Books"

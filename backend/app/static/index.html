@@ -38,7 +38,12 @@
       <button id="refresh" type="button" data-text="refresh">Aktualisieren</button>
       <button id="logout" type="button" data-text="logout">Abmelden</button>
       <dl id="counts"></dl>
-      <h2 data-text="globalProfile">Globales Absenderprofil</h2>
+      <h2 data-text="senderProfile">Absenderprofil</h2>
+      <label for="profile-scope" data-text="profileScope">Konfigurationsebene</label>
+      <select id="profile-scope"><option value="global" data-text="globalScope">Global</option><option value="webhook" data-text="webhookScope">Webhook</option><option value="library" data-text="libraryScope">Bibliothek</option></select>
+      <label for="profile-target" id="profile-target-label" data-text="profileTarget" hidden>Auswahl</label>
+      <select id="profile-target" hidden></select>
+      <p id="profile-unavailable" data-text="noTargets" hidden>Für diese Ebene ist noch kein Eintrag vorhanden.</p>
       <form id="profile-form">
         <label for="username-choice" data-text="senderName">Absendername</label>
         <select id="username-choice"><option value="inherit" data-text="inherit">Übernehmen</option><option value="original" data-text="original">Webhook-Original</option><option value="custom" data-text="custom">Benutzerdefiniert</option></select>

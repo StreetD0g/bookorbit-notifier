@@ -6,8 +6,10 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, SecretStr, StrictBool
+from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.database.models import Library, Server, Webhook
 from app.providers.notifications.discord.sender_profile import ProfileChoice, ProfileField, SenderProfile
 from app.services.authentication import AuthenticationService
 from app.services.notifications import NotificationAdministrationService
@@ -34,6 +36,17 @@ class ProfileFieldInput(BaseModel):
 class ProfileInput(BaseModel):
     username: ProfileFieldInput
     avatar_url: ProfileFieldInput
+
+
+class ProfileScopeItem(BaseModel):
+    id: int
+    name: str
+    server_name: str | None = None
+
+
+class ProfileScopeList(BaseModel):
+    libraries: list[ProfileScopeItem]
+    webhooks: list[ProfileScopeItem]
 
 
 def _context(request: Request) -> tuple[AuthenticationService, str, bool]:
@@ -167,6 +180,23 @@ def get_sender_profile(
         return SenderProfileService(request.app.state.session_factory).get(scope, scope_id)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.get("/profile-scopes")
+def profile_scopes(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> ProfileScopeList:
+    """List names and IDs for profile selectors without returning encrypted credentials."""
+
+    with request.app.state.session_factory() as session:
+        libraries = session.execute(
+            select(Library.id, Library.name, Server.name)
+            .join(Server, Library.server_id == Server.id)
+            .order_by(Server.name, Library.name, Library.id)
+        ).all()
+        webhooks = session.execute(select(Webhook.id, Webhook.name).order_by(Webhook.name, Webhook.id)).all()
+        return ProfileScopeList(
+            libraries=[ProfileScopeItem(id=row[0], name=row[1], server_name=row[2]) for row in libraries],
+            webhooks=[ProfileScopeItem(id=row[0], name=row[1]) for row in webhooks],
+        )
 
 
 @router.put("/sender-profiles/{scope}")
