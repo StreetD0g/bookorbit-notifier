@@ -43,19 +43,30 @@ class DiscordWebhookClient:
     async def send_embed(self, embed: dict[str, Any], *, cover: CoverImage | None = None) -> tuple[str | None, int]:
         """Post one embed and optionally refer to an uploaded image attachment."""
 
+        if cover is None:
+            return await self.send_embeds([embed])
         payload = {"embeds": [embed]}
-        if cover is not None:
-            payload["embeds"][0]["thumbnail"] = {"url": f"attachment://{cover.filename}"}
-            request = self._client.build_request(
-                "POST",
-                self._webhook_url,
-                params={"wait": "true"},
-                data={"payload_json": json.dumps(payload)},
-                files={"files[0]": (cover.filename, cover.content, cover.content_type)},
-            )
-        else:
-            request = self._client.build_request("POST", self._webhook_url, params={"wait": "true"}, json=payload)
+        payload["embeds"][0]["thumbnail"] = {"url": f"attachment://{cover.filename}"}
+        request = self._client.build_request(
+            "POST",
+            self._webhook_url,
+            params={"wait": "true"},
+            data={"payload_json": json.dumps(payload)},
+            files={"files[0]": (cover.filename, cover.content, cover.content_type)},
+        )
 
+        return await self._send_request(request)
+
+    async def send_embeds(self, embeds: list[dict[str, Any]]) -> tuple[str | None, int]:
+        """Send one Discord message containing one to ten embeds without source attachments."""
+
+        if not 1 <= len(embeds) <= 10:
+            raise ValueError("Discord messages must contain between one and ten embeds")
+        request = self._client.build_request("POST", self._webhook_url, params={"wait": "true"}, json={"embeds": embeds})
+        return await self._send_request(request)
+
+    async def _send_request(self, request: httpx.Request) -> tuple[str | None, int]:
+        """Send a prepared request and reduce Discord errors to safe retry context."""
         try:
             response = await self._client.send(request)
         except httpx.HTTPError as error:

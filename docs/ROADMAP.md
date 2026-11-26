@@ -40,7 +40,7 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 
 - [x] Implement server/library/webhook/template configuration and encrypted credentials.
 - [x] Implement many-to-many library-to-webhook routing and independent delivery state.
-- [ ] Implement configurable single, batch, and daily-summary modes.
+- [x] Implement configurable single, batch, and daily-summary modes.
 
 ## Phase 4 – web UI and local administration
 

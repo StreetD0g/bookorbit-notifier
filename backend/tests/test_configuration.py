@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.crypto import SecretCipher
 from app.database.base import Base
-from app.database.models import Library, NotificationTemplate, Server, Webhook
+from app.database.models import DeliveryMode, Library, NotificationTemplate, Server, Webhook
 from app.schemas.bookorbit import BookOrbitLibrary
 from app.services.configuration import ConfigurationService, CreateServer, CreateTemplate, CreateWebhook
 
@@ -81,3 +81,33 @@ def test_configuration_rejects_unsafe_urls_and_executable_template_syntax(
         service.create_webhook(CreateWebhook(name="Unsafe", webhook_url="https://example.com/api/webhooks/123/token"))
     with pytest.raises(ValueError, match="unsupported template syntax"):
         service.create_template(CreateTemplate(name="Unsafe", title_template="{% import os %}"))
+
+
+def test_library_delivery_configuration_validates_schedule_inputs(
+    configuration_service: tuple[ConfigurationService, sessionmaker[Session]],
+) -> None:
+    """Aggregation settings persist only after their local timezone and time are valid."""
+
+    service, factory = configuration_service
+    server = service.create_server(CreateServer(name="Main", base_url="https://books.example", api_key="bok_secret"))
+    service.synchronize_libraries(server.id, [BookOrbitLibrary(id=1, name="Books")])
+    with factory() as session:
+        library = session.scalar(select(Library))
+        assert library is not None
+        library_id = library.id
+
+    service.configure_library_delivery(
+        library_id,
+        delivery_mode=DeliveryMode.DAILY_SUMMARY,
+        batch_window_seconds=600,
+        daily_summary_time="7:05",
+        timezone="Europe/Berlin",
+    )
+
+    with factory() as session:
+        library = session.get(Library, library_id)
+        assert library is not None
+        assert library.delivery_mode == DeliveryMode.DAILY_SUMMARY
+        assert library.daily_summary_time == "07:05"
+    with pytest.raises(ValueError, match="Timezone is not available"):
+        service.configure_library_delivery(library_id, delivery_mode=DeliveryMode.SINGLE, timezone="Invalid/Zone")

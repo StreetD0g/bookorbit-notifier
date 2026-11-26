@@ -52,6 +52,14 @@ class QueueStatus(StrEnum):
     SKIPPED = "SKIPPED"
 
 
+class DeliveryMode(StrEnum):
+    """How one library groups ready events before routing them to Discord."""
+
+    SINGLE = "SINGLE"
+    BATCH = "BATCH"
+    DAILY_SUMMARY = "DAILY_SUMMARY"
+
+
 class ScanStatus(StrEnum):
     """A scan can be useful but incomplete; incomplete scans never imply removal."""
 
@@ -93,6 +101,12 @@ class Library(Base):
     name: Mapped[str] = mapped_column(String(255))
     monitored: Mapped[bool] = mapped_column(Boolean, default=False)
     template_id: Mapped[int | None] = mapped_column(ForeignKey("notification_templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    delivery_mode: Mapped[DeliveryMode] = mapped_column(
+        Enum(DeliveryMode, native_enum=False), default=DeliveryMode.SINGLE, server_default="SINGLE"
+    )
+    batch_window_seconds: Mapped[int] = mapped_column(Integer, default=300, server_default="300")
+    daily_summary_time: Mapped[str] = mapped_column(String(5), default="18:00", server_default="18:00")
+    timezone: Mapped[str] = mapped_column(String(64), default="Europe/Berlin", server_default="Europe/Berlin")
     metadata_delay_seconds: Mapped[int] = mapped_column(Integer, default=120, server_default="120")
     metadata_max_wait_seconds: Mapped[int] = mapped_column(Integer, default=1800, server_default="1800")
     baseline_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

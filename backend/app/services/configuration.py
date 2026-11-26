@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from urllib.parse import SplitResult, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher
-from app.database.models import Library, NotificationTemplate, Server, Webhook
+from app.database.models import DeliveryMode, Library, NotificationTemplate, Server, Webhook
 from app.schemas.bookorbit import BookOrbitLibrary
 from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES, validate_template_syntax
 
@@ -217,6 +218,31 @@ class ConfigurationService:
                 library.template_id = template_id
                 library.webhooks = webhooks
 
+    def configure_library_delivery(
+        self,
+        library_id: int,
+        *,
+        delivery_mode: DeliveryMode,
+        batch_window_seconds: int = 300,
+        daily_summary_time: str = "18:00",
+        timezone: str = "Europe/Berlin",
+    ) -> None:
+        """Configure a library's durable aggregation behavior with strict local validation."""
+
+        if not 30 <= batch_window_seconds <= 86_400:
+            raise ValueError("Batch window must be between 30 seconds and 24 hours")
+        normalized_time = _validate_daily_summary_time(daily_summary_time)
+        normalized_timezone = _validate_timezone(timezone)
+        with self._session_factory() as session:
+            with session.begin():
+                library = session.get(Library, library_id)
+                if library is None:
+                    raise ValueError("Library does not exist")
+                library.delivery_mode = DeliveryMode(delivery_mode)
+                library.batch_window_seconds = batch_window_seconds
+                library.daily_summary_time = normalized_time
+                library.timezone = normalized_timezone
+
     def list_servers(self) -> list[ServerView]:
         """List non-secret source configuration for future administrator views."""
 
@@ -281,6 +307,30 @@ def _parse_url(value: str, label: str) -> SplitResult:
     except ValueError as error:
         raise ValueError(f"{label} has an invalid port") from error
     return parsed
+
+
+def _validate_daily_summary_time(value: str) -> str:
+    """Accept a fixed 24-hour local time without locale-dependent parsing."""
+
+    normalized = value.strip()
+    parts = normalized.split(":")
+    if len(parts) != 2 or any(not part.isdigit() for part in parts):
+        raise ValueError("Daily summary time must use HH:MM")
+    hour, minute = (int(part) for part in parts)
+    if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+        raise ValueError("Daily summary time must use HH:MM")
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _validate_timezone(value: str) -> str:
+    """Ensure schedules use an installed IANA timezone, never an arbitrary string."""
+
+    normalized = _required_text(value, "Timezone", 64)
+    try:
+        ZoneInfo(normalized)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError("Timezone is not available") from error
+    return normalized
 
 
 def _server_view(server: Server) -> ServerView:

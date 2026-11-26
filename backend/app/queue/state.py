@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.database.models import Event, EventStatus, NotificationHistory, NotificationQueueItem, QueueStatus
+from app.database.models import DeliveryMode, Event, EventStatus, Library, NotificationHistory, NotificationQueueItem, QueueStatus
 
 TERMINAL_QUEUE_STATUSES = {QueueStatus.SENT, QueueStatus.FAILED, QueueStatus.SKIPPED}
 
@@ -20,10 +21,12 @@ class DeliveryClaim:
     queue_item_id: int
     event_id: int
     webhook_id: int
+    library_id: int
+    delivery_mode: DeliveryMode
     attempt_count: int
 
 
-def mark_event_ready(session: Session, event_id: int) -> int:
+def mark_event_ready(session: Session, event_id: int, *, now: datetime | None = None) -> int:
     """Release an event's per-webhook rows after metadata is ready to publish."""
 
     event = session.get(Event, event_id)
@@ -32,11 +35,31 @@ def mark_event_ready(session: Session, event_id: int) -> int:
     if event.status in {EventStatus.COMPLETED, EventStatus.FAILED, EventStatus.SKIPPED}:
         return 0
 
+    timestamp = now or datetime.now(UTC)
+    library = event.book.library
+    scheduled_status, scheduled_at = _delivery_schedule(library.delivery_mode, library, timestamp)
+    if library.delivery_mode == DeliveryMode.BATCH:
+        # The first ready event opens a collection window. Later events for the
+        # same library share that deadline, rather than each creating a nearly
+        # identical Discord message a few seconds later.
+        existing_deadline = session.scalar(
+            select(func.min(NotificationQueueItem.next_retry_at))
+            .join(Event, NotificationQueueItem.event_id == Event.id)
+            .where(
+                Event.library_id == library.id,
+                Event.id != event.id,
+                NotificationQueueItem.status == QueueStatus.QUEUED,
+                NotificationQueueItem.next_retry_at.is_not(None),
+            )
+        )
+        if existing_deadline is not None:
+            scheduled_at = existing_deadline
     items = session.scalars(select(NotificationQueueItem).where(NotificationQueueItem.event_id == event_id)).all()
     promoted = 0
     for item in items:
         if item.status == QueueStatus.WAITING_FOR_METADATA:
-            item.status = QueueStatus.READY
+            item.status = scheduled_status
+            item.next_retry_at = scheduled_at
             promoted += 1
     event.status = EventStatus.READY
     return promoted
@@ -55,16 +78,22 @@ def claim_due_deliveries(session: Session, *, limit: int, now: datetime | None =
     timestamp = now or datetime.now(UTC)
     due = or_(
         NotificationQueueItem.status == QueueStatus.READY,
+        and_(NotificationQueueItem.status == QueueStatus.QUEUED, NotificationQueueItem.next_retry_at <= timestamp),
         and_(
             NotificationQueueItem.status == QueueStatus.RETRY,
             or_(NotificationQueueItem.next_retry_at.is_(None), NotificationQueueItem.next_retry_at <= timestamp),
         ),
     )
-    items = session.scalars(
-        select(NotificationQueueItem).where(due).order_by(NotificationQueueItem.created_at, NotificationQueueItem.id).limit(limit)
+    rows = session.execute(
+        select(NotificationQueueItem, Event.library_id, Library.delivery_mode)
+        .join(Event, NotificationQueueItem.event_id == Event.id)
+        .join(Library, Event.library_id == Library.id)
+        .where(due)
+        .order_by(NotificationQueueItem.next_retry_at, NotificationQueueItem.created_at, NotificationQueueItem.id)
+        .limit(limit)
     ).all()
     claims: list[DeliveryClaim] = []
-    for item in items:
+    for item, library_id, delivery_mode in rows:
         item.status = QueueStatus.SENDING
         item.attempt_count += 1
         item.sending_started_at = timestamp
@@ -73,6 +102,8 @@ def claim_due_deliveries(session: Session, *, limit: int, now: datetime | None =
                 queue_item_id=item.id,
                 event_id=item.event_id,
                 webhook_id=item.webhook_id,
+                library_id=library_id,
+                delivery_mode=delivery_mode,
                 attempt_count=item.attempt_count,
             )
         )
@@ -213,3 +244,33 @@ def _refresh_event_completion(session: Session, event_id: int) -> None:
     if not statuses or not all(status in TERMINAL_QUEUE_STATUSES for status in statuses):
         return
     event.status = EventStatus.FAILED if QueueStatus.FAILED in statuses else EventStatus.COMPLETED
+
+
+def _delivery_schedule(delivery_mode: DeliveryMode, library: Library, now: datetime) -> tuple[QueueStatus, datetime | None]:
+    """Choose the durable queue state and due timestamp for one library's configured mode."""
+
+    if delivery_mode == DeliveryMode.SINGLE:
+        return QueueStatus.READY, None
+    if delivery_mode == DeliveryMode.BATCH:
+        window = max(1, library.batch_window_seconds)
+        return QueueStatus.QUEUED, now + timedelta(seconds=window)
+    return QueueStatus.QUEUED, _next_daily_summary(library.daily_summary_time, library.timezone, now)
+
+
+def _next_daily_summary(summary_time: str, timezone_name: str, now: datetime) -> datetime:
+    """Return the next configured local summary time as a UTC timestamp, including DST zones."""
+
+    try:
+        zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError("Library timezone is not available") from error
+    try:
+        hour, minute = (int(part) for part in summary_time.split(":", maxsplit=1))
+        local_time = time(hour=hour, minute=minute)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Daily summary time must use HH:MM") from error
+    local_now = now.astimezone(zone)
+    local_target = datetime.combine(local_now.date(), local_time, tzinfo=zone)
+    if local_target <= local_now:
+        local_target += timedelta(days=1)
+    return local_target.astimezone(UTC)

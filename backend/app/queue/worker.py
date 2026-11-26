@@ -10,7 +10,7 @@ from typing import Any, Protocol
 from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher
-from app.database.models import Book, Event, Webhook
+from app.database.models import Book, DeliveryMode, Event, Webhook
 from app.providers.notifications.discord.client import DiscordDeliveryError, DiscordWebhookClient
 from app.queue.state import DeliveryClaim, claim_due_deliveries, record_delivery_failure, record_delivery_success, recover_stale_sends
 from app.schemas.bookorbit import CoverImage
@@ -65,6 +65,9 @@ class NotificationSender(Protocol):
 
     async def send(self, target: WebhookTarget, notification: OutgoingNotification) -> tuple[str | None, int]:
         """Send one message and return Discord's message ID plus response status."""
+
+    async def send_many(self, target: WebhookTarget, notifications: list[OutgoingNotification]) -> tuple[str | None, int]:
+        """Send a single Discord message containing up to ten attachment-free embeds."""
 
 
 class EncryptedWebhookTargetResolver:
@@ -163,6 +166,17 @@ class DiscordNotificationSender:
         finally:
             await client.aclose()
 
+    async def send_many(self, target: WebhookTarget, notifications: list[OutgoingNotification]) -> tuple[str | None, int]:
+        """Send grouped embeds; covers fall back to independent messages to preserve attachments."""
+
+        if any(notification.cover is not None for notification in notifications):
+            raise ValueError("Grouped Discord delivery does not support cover attachments")
+        client = DiscordWebhookClient(target.webhook_url)
+        try:
+            return await client.send_embeds([notification.embed for notification in notifications])
+        finally:
+            await client.aclose()
+
 
 class DiscordDeliveryWorker:
     """Claim committed queue rows, perform HTTP I/O, then persist each target outcome."""
@@ -195,14 +209,17 @@ class DiscordDeliveryWorker:
         recovered = self._recover_stale(timestamp)
         claims = self._claim_due(limit, timestamp)
         sent = retried = failed = 0
+        grouped_claims: dict[tuple[int, int, DeliveryMode], list[DeliveryClaim]] = {}
         for claim in claims:
+            if claim.delivery_mode != DeliveryMode.SINGLE:
+                grouped_claims.setdefault((claim.webhook_id, claim.library_id, claim.delivery_mode), []).append(claim)
+                continue
             outcome = await self._deliver_claim(claim, timestamp)
-            if outcome == "sent":
-                sent += 1
-            elif outcome == "failed":
-                failed += 1
-            else:
-                retried += 1
+            sent, retried, failed = _count_outcome(outcome, sent, retried, failed)
+        for group in grouped_claims.values():
+            for offset in range(0, len(group), 10):
+                for outcome in await self._deliver_batch(group[offset : offset + 10], timestamp):
+                    sent, retried, failed = _count_outcome(outcome, sent, retried, failed)
         return DeliveryWorkerReport(recovered_stale=recovered, claimed=len(claims), sent=sent, retried=retried, failed=failed)
 
     def _recover_stale(self, now: datetime) -> int:
@@ -239,6 +256,29 @@ class DiscordDeliveryWorker:
                 record_delivery_success(session, queue_item_id=claim.queue_item_id, discord_message_id=message_id, sent_at=now)
         return "sent"
 
+    async def _deliver_batch(self, claims: list[DeliveryClaim], now: datetime) -> list[str]:
+        """Send a bounded group as one Discord message while preserving each row's status."""
+
+        try:
+            target = self._target_resolver.resolve(claims[0].webhook_id)
+            notifications = [self._notification_builder.build(claim.event_id) for claim in claims]
+            if any(notification.cover is not None for notification in notifications):
+                return [await self._deliver_claim(claim, now) for claim in claims]
+            message_id, _status_code = await self._sender.send_many(target, notifications)
+        except DiscordDeliveryError as error:
+            for claim in claims:
+                self._record_failure(claim, _discord_error_summary(error), error.retry_after_seconds, now)
+            return ["failed" if claim.attempt_count >= self._max_attempts else "retry" for claim in claims]
+        except Exception as error:
+            for claim in claims:
+                self._record_failure(claim, f"Delivery adapter failed ({type(error).__name__})", None, now)
+            return ["failed" if claim.attempt_count >= self._max_attempts else "retry" for claim in claims]
+        for claim in claims:
+            with self._session_factory() as session:
+                with session.begin():
+                    record_delivery_success(session, queue_item_id=claim.queue_item_id, discord_message_id=message_id, sent_at=now)
+        return ["sent"] * len(claims)
+
     def _record_failure(self, claim: DeliveryClaim, summary: str, retry_after_seconds: float | None, now: datetime) -> None:
         """Persist a retry/final failure for exactly the claimed webhook row."""
 
@@ -258,3 +298,13 @@ def _discord_error_summary(error: DiscordDeliveryError) -> str:
     """Persist only the response category, never Discord's untrusted response body."""
 
     return f"Discord delivery failed (HTTP {error.status_code})" if error.status_code is not None else "Discord delivery failed"
+
+
+def _count_outcome(outcome: str, sent: int, retried: int, failed: int) -> tuple[int, int, int]:
+    """Increment the worker report once per persistent queue row rather than per HTTP request."""
+
+    if outcome == "sent":
+        return sent + 1, retried, failed
+    if outcome == "failed":
+        return sent, retried, failed + 1
+    return sent, retried + 1, failed

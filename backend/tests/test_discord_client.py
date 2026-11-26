@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -44,3 +46,21 @@ async def test_captures_discord_rate_limit_hint() -> None:
 
     assert error.value.status_code == 429
     assert error.value.retry_after_seconds == 2.5
+
+
+@pytest.mark.asyncio
+async def test_sends_up_to_ten_embeds_in_one_discord_message() -> None:
+    """Grouped delivery uses Discord's embeds array rather than multiple webhook posts."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content) == {"embeds": [{"title": "One"}, {"title": "Two"}]}
+        return httpx.Response(200, json={"id": "discord-batch-1"})
+
+    client = DiscordWebhookClient("https://discord.example/webhook", transport=httpx.MockTransport(handler))
+    try:
+        message_id, status_code = await client.send_embeds([{"title": "One"}, {"title": "Two"}])
+    finally:
+        await client.aclose()
+
+    assert message_id == "discord-batch-1"
+    assert status_code == 200
