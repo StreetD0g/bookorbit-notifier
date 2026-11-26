@@ -38,6 +38,19 @@
       <button id="refresh" type="button" data-text="refresh">Aktualisieren</button>
       <button id="logout" type="button" data-text="logout">Abmelden</button>
       <dl id="counts"></dl>
+      <details class="management">
+        <summary data-text="changePassword">Passwort ändern</summary>
+        <form id="change-password-form">
+          <label for="current-password" data-text="currentPassword">Bisheriges Passwort</label>
+          <input id="current-password" type="password" autocomplete="current-password" maxlength="1024" required>
+          <label for="replacement-password" data-text="newPassword">Neues Passwort (mindestens 12 Zeichen)</label>
+          <input id="replacement-password" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required>
+          <label for="repeat-password" data-text="repeatPassword">Neues Passwort wiederholen</label>
+          <input id="repeat-password" type="password" autocomplete="new-password" minlength="12" maxlength="1024" required>
+          <p data-text="passwordSessions">Nach der Änderung werden alle Sitzungen abgemeldet.</p>
+          <button type="submit" data-text="changePassword">Passwort ändern</button>
+        </form>
+      </details>
       <section class="management" aria-labelledby="servers-heading">
         <h2 id="servers-heading" data-text="servers">BookOrbit-Server</h2>
         <form id="server-form">

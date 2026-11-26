@@ -65,3 +65,20 @@ def test_lockout_persists_across_service_instances(auth) -> None:
     restarted = AuthenticationService(factory)
     assert restarted.login("a long local password", now=now + timedelta(minutes=14)) is None
     assert restarted.login("a long local password", now=now + timedelta(minutes=15)) is not None
+
+
+def test_password_change_requires_current_password_and_revokes_all_sessions(auth) -> None:
+    service, _factory = auth
+    service.setup("a long local password")
+    now = datetime(2026, 11, 26, tzinfo=UTC)
+    first = service.login("a long local password", now=now)
+    second = service.login("a long local password", now=now)
+    assert first is not None and second is not None
+    assert not service.change_password(first.session_token, "wrong password", "new sufficiently long password", now=now)
+    assert service.validate(first.session_token, now=now)
+    with pytest.raises(ValueError):
+        service.change_password(first.session_token, "a long local password", "short", now=now)
+    assert service.change_password(first.session_token, "a long local password", "new sufficiently long password", now=now)
+    assert not service.validate(first.session_token, now=now) and not service.validate(second.session_token, now=now)
+    assert service.login("a long local password", now=now) is None
+    assert service.login("new sufficiently long password", now=now) is not None

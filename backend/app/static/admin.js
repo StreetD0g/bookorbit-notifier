@@ -29,6 +29,8 @@ Object.assign(messages.de, {refreshFailed: "Die Aktion war erfolgreich, aber die
 Object.assign(messages.en, {refreshFailed: "The action succeeded, but the view could not be refreshed."});
 Object.assign(messages.de, {edit: "Bearbeiten", interval: "Scanintervall in Sekunden", replaceKey: "Neuer Leseschlüssel (leer lassen, um den bisherigen zu behalten)", saveChanges: "Änderungen speichern", replaceWebhook: "Neue Webhook-URL (leer lassen, um die bisherige zu behalten)", webhookEnabled: "Webhook aktiv", confirmWebhookChange: "Die Zieladresse wird ersetzt. Wartende Nachrichten können an das neue Ziel gesendet werden. Fortfahren?", manualScan: "Jetzt scannen", sourceIdentity: "Die Server-URL bleibt unverändert, damit vorhandene Bibliotheks-IDs zugeordnet bleiben."});
 Object.assign(messages.en, {edit: "Edit", interval: "Scan interval in seconds", replaceKey: "New read-only key (leave empty to keep the existing one)", saveChanges: "Save changes", replaceWebhook: "New webhook URL (leave empty to keep the existing one)", webhookEnabled: "Webhook enabled", confirmWebhookChange: "The destination will be replaced. Pending notifications may be sent to the new destination. Continue?", manualScan: "Scan now", sourceIdentity: "The server URL remains unchanged to preserve existing library identities."});
+Object.assign(messages.de, {changePassword: "Passwort ändern", currentPassword: "Bisheriges Passwort", repeatPassword: "Neues Passwort wiederholen", passwordSessions: "Nach der Änderung werden alle Sitzungen abgemeldet.", passwordMismatch: "Die neuen Passwörter stimmen nicht überein.", passwordChanged: "Passwort geändert. Bitte melde dich erneut an."});
+Object.assign(messages.en, {changePassword: "Change password", currentPassword: "Current password", repeatPassword: "Repeat new password", passwordSessions: "All sessions will be signed out after the change.", passwordMismatch: "The new passwords do not match.", passwordChanged: "Password changed. Please sign in again."});
 let counts = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
@@ -339,6 +341,17 @@ document.querySelector("#setup-form").addEventListener("submit", async event => 
     await call("/setup", {method: "POST", headers: {"Content-Type": "application/json", "X-Setup-Token": token.value}, body: JSON.stringify({password: password.value})});
     message.textContent = strings().configured;
   } catch { message.textContent = strings().failed; } finally { token.value = ""; password.value = ""; }
+});
+document.querySelector("#change-password-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const current = document.querySelector("#current-password"), replacement = document.querySelector("#replacement-password"), repeat = document.querySelector("#repeat-password");
+  if (replacement.value !== repeat.value) { message.textContent = strings().passwordMismatch; return; }
+  const button = event.currentTarget.querySelector("button[type=submit]"); button.disabled = true;
+  try {
+    await call("/change-password", {...mutationOptions({current_password: current.value, new_password: replacement.value}), method: "POST"});
+    counts = null; dashboard.hidden = true; authPanel.hidden = false; message.textContent = strings().passwordChanged;
+  } catch { message.textContent = strings().failed; }
+  finally { current.value = ""; replacement.value = ""; repeat.value = ""; button.disabled = false; }
 });
 document.querySelector("#refresh").addEventListener("click", async () => {
   try { await refresh(); } catch { message.textContent = strings().failed; }

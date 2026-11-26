@@ -320,3 +320,17 @@ def test_manual_scan_requires_csrf_and_reports_failure_without_secrets(client, m
     monkeypatch.setitem(app.state._state, "runtime_scheduler", FailingScheduler())
     result = http.post("/api/v1/admin/servers/7/scan", headers={"origin": ORIGIN, "x-csrf-token": csrf})
     assert result.status_code == 502 and "fixture-sensitive-details" not in result.text
+
+
+def test_password_change_requires_csrf_and_current_password(client) -> None:
+    http, _engine = client
+    csrf = setup_and_login(http)
+    path = "/api/v1/admin/change-password"
+    payload = {"current_password": PASSWORD, "new_password": "new local password for testing"}
+    assert http.post(path, headers={"origin": ORIGIN}, json=payload).status_code == 401
+    headers = {"origin": ORIGIN, "x-csrf-token": csrf}
+    assert http.post(path, headers=headers, json={**payload, "current_password": "incorrect password"}).status_code == 401
+    assert http.post(path, headers=headers, json=payload).status_code == 200
+    assert http.get("/api/v1/admin/notifications/summary").status_code == 401
+    assert http.post("/api/v1/admin/login", headers={"origin": ORIGIN}, json={"password": PASSWORD}).status_code == 401
+    assert http.post("/api/v1/admin/login", headers={"origin": ORIGIN}, json={"password": payload["new_password"]}).status_code == 200

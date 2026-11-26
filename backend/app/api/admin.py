@@ -39,6 +39,11 @@ class PasswordInput(BaseModel):
     password: SecretStr
 
 
+class ChangePasswordInput(BaseModel):
+    current_password: SecretStr
+    new_password: SecretStr
+
+
 class RetryInput(BaseModel):
     confirm_sent_resend: StrictBool = False
 
@@ -242,6 +247,25 @@ def logout(request: Request, response: Response, auth: Annotated[AuthenticationS
     response.delete_cookie(_SESSION_COOKIE, path="/")
     response.delete_cookie(_CSRF_COOKIE, path="/")
     return {"status": "signed_out"}
+
+
+@router.post("/change-password")
+def change_password(
+    request: Request, response: Response, payload: ChangePasswordInput, auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str]:
+    """Change a local password after CSRF and current-password checks; revoke sessions."""
+
+    try:
+        changed = auth.change_password(
+            request.cookies.get(_SESSION_COOKIE, ""), payload.current_password.get_secret_value(), payload.new_password.get_secret_value()
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    if not changed:
+        raise HTTPException(status_code=401, detail="Password change failed")
+    response.delete_cookie(_SESSION_COOKIE, path="/")
+    response.delete_cookie(_CSRF_COOKIE, path="/")
+    return {"status": "password_changed"}
 
 
 @router.get("/notifications/summary")

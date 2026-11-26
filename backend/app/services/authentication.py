@@ -115,6 +115,47 @@ class AuthenticationService:
             with self._sessions() as session, session.begin():
                 session.execute(delete(AdministratorSession).where(AdministratorSession.token_hash == _digest(token)))
 
+    def change_password(self, token: str, current_password: str, new_password: str, *, now: datetime | None = None) -> bool:
+        """Verify the current credential and atomically revoke every existing session."""
+
+        _validate_password(new_password)
+        if not _valid_token(token) or not isinstance(current_password, str) or len(current_password) > 1024:
+            return False
+        timestamp = _utc(now)
+        with self._sessions() as session:
+            session.execute(text("BEGIN IMMEDIATE"))
+            try:
+                stored = session.get(AdministratorSession, _digest(token))
+                admin = session.get(Administrator, 1)
+                if (
+                    stored is None
+                    or _utc(stored.expires_at) <= timestamp
+                    or admin is None
+                    or (admin.locked_until is not None and _utc(admin.locked_until) > timestamp)
+                ):
+                    session.commit()
+                    return False
+                try:
+                    valid = self._hasher.verify(admin.password_hash, current_password)
+                except VerificationError:
+                    valid = False
+                if not valid:
+                    admin.failed_attempts += 1
+                    if admin.failed_attempts >= _MAX_FAILURES:
+                        admin.failed_attempts = 0
+                        admin.locked_until = timestamp + _LOCKOUT
+                    session.commit()
+                    return False
+                admin.password_hash = self._hasher.hash(new_password)
+                admin.failed_attempts = 0
+                admin.locked_until = None
+                session.execute(delete(AdministratorSession))
+                session.commit()
+                return True
+            except Exception:
+                session.rollback()
+                raise
+
 
 def _valid_token(value: str | None) -> bool:
     return isinstance(value, str) and 32 <= len(value) <= 128 and value.isascii()
