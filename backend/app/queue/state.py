@@ -67,6 +67,7 @@ def claim_due_deliveries(session: Session, *, limit: int, now: datetime | None =
     for item in items:
         item.status = QueueStatus.SENDING
         item.attempt_count += 1
+        item.sending_started_at = timestamp
         claims.append(
             DeliveryClaim(
                 queue_item_id=item.id,
@@ -93,6 +94,7 @@ def record_delivery_success(
     item.discord_message_id = discord_message_id
     item.next_retry_at = None
     item.last_error = None
+    item.sending_started_at = None
     _refresh_event_completion(session, item.event_id)
 
 
@@ -112,6 +114,7 @@ def record_delivery_failure(
     item = _require_sending_item(session, queue_item_id)
     timestamp = now or datetime.now(UTC)
     item.last_error = _safe_error_summary(error_summary)
+    item.sending_started_at = None
     if item.attempt_count >= max_attempts:
         item.status = QueueStatus.FAILED
         item.next_retry_at = None
@@ -130,6 +133,35 @@ def _require_sending_item(session: Session, queue_item_id: int) -> NotificationQ
     if item.status != QueueStatus.SENDING:
         raise ValueError("Notification queue item is not currently being sent")
     return item
+
+
+def recover_stale_sends(session: Session, *, stale_after: timedelta, now: datetime | None = None) -> int:
+    """Return interrupted worker claims to retry after a container crash or restart.
+
+    The original Discord request may have reached the destination before the process
+    died, so this cannot guarantee exactly-once delivery. It preserves the event and
+    limits recovery to the affected webhook rather than duplicating sibling sends.
+    """
+
+    if stale_after.total_seconds() <= 0:
+        raise ValueError("Stale-send interval must be positive")
+    timestamp = now or datetime.now(UTC)
+    stale_before = timestamp - stale_after
+    items = session.scalars(
+        select(NotificationQueueItem).where(
+            NotificationQueueItem.status == QueueStatus.SENDING,
+            or_(
+                NotificationQueueItem.sending_started_at.is_(None),
+                NotificationQueueItem.sending_started_at <= stale_before,
+            ),
+        )
+    ).all()
+    for item in items:
+        item.status = QueueStatus.RETRY
+        item.sending_started_at = None
+        item.next_retry_at = timestamp
+        item.last_error = "Delivery interrupted before a result was persisted"
+    return len(items)
 
 
 def _retry_delay_seconds(attempt_count: int, retry_after_seconds: float | None) -> float:

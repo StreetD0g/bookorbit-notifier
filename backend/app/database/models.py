@@ -92,6 +92,8 @@ class Library(Base):
     bookorbit_library_id: Mapped[int] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(String(255))
     monitored: Mapped[bool] = mapped_column(Boolean, default=False)
+    metadata_delay_seconds: Mapped[int] = mapped_column(Integer, default=120, server_default="120")
+    metadata_max_wait_seconds: Mapped[int] = mapped_column(Integer, default=1800, server_default="1800")
     baseline_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
@@ -141,6 +143,10 @@ class Event(Base):
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     event_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     status: Mapped[EventStatus] = mapped_column(Enum(EventStatus, native_enum=False), default=EventStatus.DETECTED)
+    metadata_not_before_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    metadata_deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_attempt_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    metadata_last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     book: Mapped[Book] = relationship(back_populates="events")
     deliveries: Mapped[list[NotificationQueueItem]] = relationship(back_populates="event", cascade="all, delete-orphan")
@@ -191,6 +197,7 @@ class NotificationQueueItem(Base):
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    sending_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     discord_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

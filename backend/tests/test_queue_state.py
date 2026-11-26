@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database.base import Base
 from app.database.models import Event, EventStatus, Library, NotificationQueueItem, QueueStatus, Server, Webhook
-from app.queue.state import claim_due_deliveries, mark_event_ready, record_delivery_failure, record_delivery_success
+from app.queue.state import claim_due_deliveries, mark_event_ready, record_delivery_failure, record_delivery_success, recover_stale_sends
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
 
 
@@ -112,3 +112,24 @@ def test_delivery_claim_validates_safe_batch_limit(queued_event: tuple[Session, 
     session, _event, _items = queued_event
     with pytest.raises(ValueError, match="between 1 and 100"):
         claim_due_deliveries(session, limit=0)
+
+
+def test_stale_send_recovery_retries_only_interrupted_destination(
+    queued_event: tuple[Session, Event, list[NotificationQueueItem]],
+) -> None:
+    """A restart moves old SENDING work back to retry without touching its sibling."""
+
+    session, event, _items = queued_event
+    mark_event_ready(session, event.id)
+    claimed_at = datetime(2026, 11, 26, tzinfo=UTC)
+    claims = claim_due_deliveries(session, limit=1, now=claimed_at)
+    session.commit()
+
+    recovered = recover_stale_sends(session, stale_after=timedelta(minutes=5), now=claimed_at + timedelta(minutes=6))
+    session.commit()
+
+    assert recovered == 1
+    recovered_item = session.get(NotificationQueueItem, claims[0].queue_item_id)
+    assert recovered_item is not None
+    assert recovered_item.status == QueueStatus.RETRY
+    assert recovered_item.next_retry_at == (claimed_at + timedelta(minutes=6)).replace(tzinfo=None)

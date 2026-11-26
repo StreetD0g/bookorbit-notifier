@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -205,6 +205,8 @@ def _create_arrival_events(session: Session, library: Library, new_books: Sequen
             event_type=EventType.BOOK_ADDED,
             event_data={"provider": "bookorbit_polling", "bookorbit_book_id": book.bookorbit_book_id},
             status=EventStatus.WAITING_FOR_METADATA,
+            metadata_not_before_at=utc_now() + timedelta(seconds=library.metadata_delay_seconds),
+            metadata_deadline_at=utc_now() + timedelta(seconds=library.metadata_max_wait_seconds),
         )
         session.add(event)
         session.flush()
