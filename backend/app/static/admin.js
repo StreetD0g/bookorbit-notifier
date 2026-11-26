@@ -19,12 +19,15 @@ Object.assign(messages.de, {servers: "BookOrbit-Server", name: "Name", serverUrl
 Object.assign(messages.en, {servers: "BookOrbit servers", name: "Name", serverUrl: "Server URL", serverKey: "BookOrbit read-only key", addServer: "Add server", webhooks: "Discord webhooks", webhookUrl: "Webhook URL", addWebhook: "Add webhook", libraries: "Libraries", libraryHelp: "Refresh libraries from their server. The initial baseline does not generate notifications.", syncLibraries: "Refresh libraries", disable: "Disable", enable: "Enable", monitored: "Monitor", saveRouting: "Save routing", configuredOk: "Configuration saved.", syncOk: "Libraries refreshed.", destination: "Discord destinations"});
 Object.assign(messages.de, {history: "Zustellhistorie", historyHelp: "Die neuesten 50 Zustellungen. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht.", attempts: "Versuche", detectedAt: "Erkannt", sentAt: "Gesendet", lastError: "Letzter Fehler", discordId: "Discord-Nachrichten-ID", retryAction: "Erneut senden", resendConfirm: "Diese Nachricht wurde bereits gesendet. Wirklich eine weitere Discord-Nachricht senden?", showHistory: "Versuche anzeigen"});
 Object.assign(messages.en, {history: "Delivery history", historyHelp: "The latest 50 deliveries. Resending a delivered notification creates another Discord message.", attempts: "Attempts", detectedAt: "Detected", sentAt: "Sent", lastError: "Last error", discordId: "Discord message ID", retryAction: "Retry", resendConfirm: "This notification was already sent. Send another Discord message?", showHistory: "Show attempts"});
+Object.assign(messages.de, {previewHint: "Die Vorschau zeigt Beispieldaten. Änderungen werden erst beim Speichern übernommen und nicht versendet.", templateSelect: "Vorlage", newTemplate: "Neue Vorlage", templateName: "Vorlagenname", saveTemplate: "Vorlage speichern", libraryTemplate: "Vorlage für diese Bibliothek", defaultTemplate: "Standardvorlage"});
+Object.assign(messages.en, {previewHint: "The preview shows sample data. Changes are only applied when saved and are not sent.", templateSelect: "Template", newTemplate: "New template", templateName: "Template name", saveTemplate: "Save template", libraryTemplate: "Template for this library", defaultTemplate: "Default template"});
 let counts = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
 let previewRequest = 0, previewTimer;
 let servers = [], webhooks = [], libraries = [];
 let deliveries = [];
+let templates = [];
 function strings() { return messages[language.value]; }
 function translate() {
   document.documentElement.lang = language.value;
@@ -32,6 +35,7 @@ function translate() {
   if (counts) renderCounts(counts);
   renderManagement();
   renderDeliveries();
+  populateTemplateSelector();
   updatePreviewSender();
 }
 function cookie(name) {
@@ -110,7 +114,8 @@ async function selectScope() {
 async function refresh() {
   counts = await call("/notifications/summary");
   scopes = await call("/profile-scopes");
-  [servers, webhooks, libraries, deliveries] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries"), call("/notifications")]);
+  [servers, webhooks, libraries, deliveries, templates] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries"), call("/notifications"), call("/templates")]);
+  populateTemplateSelector();
   renderManagement();
   renderDeliveries();
   const variables = await call("/template-variables");
@@ -187,10 +192,43 @@ function renderManagement() {
       checkbox.type = "checkbox"; checkbox.checked = library.webhook_ids.includes(webhook.id); choices.push([webhook.id, checkbox]);
       label.append(checkbox, document.createTextNode(" " + webhook.name)); card.append(label);
     }
-    card.append(actionButton(strings().saveRouting, () => call("/libraries/" + library.id + "/routing", mutationOptions({monitored: monitored.checked, webhook_ids: choices.filter(([, checkbox]) => checkbox.checked).map(([id]) => id), template_id: library.template_id}))));
+    const templateLabel = document.createElement("label"), templateSelect = document.createElement("select");
+    templateLabel.textContent = strings().libraryTemplate;
+    const fallback = document.createElement("option"); fallback.value = ""; fallback.textContent = strings().defaultTemplate; templateSelect.append(fallback);
+    for (const template of templates) { const option = document.createElement("option"); option.value = String(template.id); option.textContent = template.name; templateSelect.append(option); }
+    templateSelect.value = library.template_id === null ? "" : String(library.template_id);
+    templateLabel.append(templateSelect); card.append(templateLabel);
+    card.append(actionButton(strings().saveRouting, () => call("/libraries/" + library.id + "/routing", mutationOptions({monitored: monitored.checked, webhook_ids: choices.filter(([, checkbox]) => checkbox.checked).map(([id]) => id), template_id: templateSelect.value ? Number(templateSelect.value) : null}))));
     libraryList.append(card);
   }
 }
+function populateTemplateSelector() {
+  const select = document.querySelector("#template-select"), current = select.value;
+  select.replaceChildren();
+  const empty = document.createElement("option"); empty.value = ""; empty.textContent = strings().newTemplate; select.append(empty);
+  for (const template of templates) { const option = document.createElement("option"); option.value = String(template.id); option.textContent = template.name; select.append(option); }
+  if ([...select.options].some(option => option.value === current)) select.value = current;
+}
+document.querySelector("#template-select").addEventListener("change", event => {
+  const template = templates.find(item => String(item.id) === event.target.value);
+  document.querySelector("#template-name").value = template?.name || "";
+  if (template) {
+    document.querySelector("#preview-title").value = template.title_template;
+    document.querySelector("#preview-description").value = template.description_template;
+    document.querySelector("#preview-footer").value = template.footer_template || "";
+    queuePreview();
+  }
+});
+document.querySelector("#save-template").addEventListener("click", async () => {
+  const selected = templates.find(item => String(item.id) === document.querySelector("#template-select").value);
+  const payload = {name: document.querySelector("#template-name").value, title_template: document.querySelector("#preview-title").value, description_template: document.querySelector("#preview-description").value, footer_template: document.querySelector("#preview-footer").value || null, color: selected?.color ?? 0x2f855a, show_cover: selected?.show_cover ?? true, metadata_fields: selected?.metadata_fields ?? []};
+  try {
+    const result = await call(selected ? "/templates/" + selected.id : "/templates", {...mutationOptions(payload), method: selected ? "PUT" : "POST"});
+    await refresh();
+    document.querySelector("#template-select").value = String(selected?.id ?? result.id);
+    message.textContent = strings().configuredOk;
+  } catch { message.textContent = strings().failed; }
+});
 language.addEventListener("change", translate);
 document.querySelector("#profile-scope").addEventListener("change", () => selectScope().catch(() => { message.textContent = strings().failed; }));
 document.querySelector("#profile-target").addEventListener("change", () => loadProfile().catch(() => { message.textContent = strings().failed; }));

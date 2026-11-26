@@ -134,18 +134,7 @@ class ConfigurationService:
     def create_template(self, command: CreateTemplate) -> int:
         """Persist a validated declarative template and return only its non-secret ID."""
 
-        name = _required_text(command.name, "Template name", 120)
-        for field_name, template in {
-            "Title template": command.title_template,
-            "Description template": command.description_template,
-            "Footer template": command.footer_template,
-        }.items():
-            if template is not None:
-                validate_template_syntax(template, field_name)
-        if not 0 <= command.color <= 0xFFFFFF:
-            raise ValueError("Embed color must be a 24-bit RGB integer")
-        if any(field not in ALLOWED_TEMPLATE_VARIABLES for field in command.metadata_fields):
-            raise ValueError("Metadata field contains an unsupported template variable")
+        name = _validate_template(command)
         with self._session_factory() as session:
             with session.begin():
                 template = NotificationTemplate(
@@ -160,6 +149,22 @@ class ConfigurationService:
                 session.add(template)
                 session.flush()
                 return template.id
+
+    def update_template(self, template_id: int, command: CreateTemplate) -> None:
+        """Change the shared layout without altering assigned libraries."""
+
+        name = _validate_template(command)
+        with self._session_factory() as session, session.begin():
+            template = session.get(NotificationTemplate, template_id)
+            if template is None:
+                raise ValueError("Notification template does not exist")
+            template.name = name
+            template.title_template = command.title_template
+            template.description_template = command.description_template
+            template.footer_template = command.footer_template
+            template.color = command.color
+            template.show_cover = command.show_cover
+            template.metadata_fields = list(command.metadata_fields)
 
     def synchronize_libraries(self, server_id: int, source_libraries: Sequence[BookOrbitLibrary]) -> LibrarySyncResult:
         """Upsert accessible source libraries; absent source rows are never deleted automatically."""
@@ -206,9 +211,7 @@ class ConfigurationService:
                 if library is None:
                     raise ValueError("Library does not exist")
                 webhooks = (
-                    session.scalars(select(Webhook).where(Webhook.id.in_(requested_webhook_ids))).all()
-                    if requested_webhook_ids
-                    else []
+                    session.scalars(select(Webhook).where(Webhook.id.in_(requested_webhook_ids))).all() if requested_webhook_ids else []
                 )
                 if len(webhooks) != len(requested_webhook_ids):
                     raise ValueError("One or more requested webhooks do not exist")
@@ -267,6 +270,26 @@ def _required_text(value: str, label: str, max_length: int) -> str:
     if len(normalized) > max_length:
         raise ValueError(f"{label} exceeds {max_length} characters")
     return normalized
+
+
+def _validate_template(command: CreateTemplate) -> str:
+    """Validate template fields consistently on both creation and update."""
+
+    name = _required_text(command.name, "Template name", 120)
+    for field_name, value, limit in (
+        ("Title template", command.title_template, 512),
+        ("Description template", command.description_template, 4000),
+        ("Footer template", command.footer_template, 512),
+    ):
+        if value is not None:
+            if len(value) > limit:
+                raise ValueError(f"{field_name} exceeds {limit} characters")
+            validate_template_syntax(value, field_name)
+    if not 0 <= command.color <= 0xFFFFFF:
+        raise ValueError("Embed color must be a 24-bit RGB integer")
+    if any(field not in ALLOWED_TEMPLATE_VARIABLES for field in command.metadata_fields):
+        raise ValueError("Metadata field contains an unsupported template variable")
+    return name
 
 
 def _normalize_http_url(value: str, label: str) -> str:

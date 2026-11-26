@@ -11,13 +11,13 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
 from app.core.crypto import SecretCipher
-from app.database.models import Book, Library, Server, Webhook
+from app.database.models import Book, Library, NotificationTemplate, Server, Webhook
 from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.providers.events.bookorbit.factory import EncryptedBookOrbitClientFactory
 from app.providers.notifications.discord.sender_profile import ProfileChoice, ProfileField, SenderProfile
 from app.queue.worker import _template_values, render_embed
 from app.services.authentication import AuthenticationService
-from app.services.configuration import ConfigurationService, CreateServer, CreateWebhook
+from app.services.configuration import ConfigurationService, CreateServer, CreateTemplate, CreateWebhook
 from app.services.notifications import NotificationAdministrationService
 from app.services.sender_profiles import SenderProfileService
 from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES
@@ -83,6 +83,28 @@ class LibraryRoutingInput(BaseModel):
     monitored: StrictBool
     webhook_ids: list[int] = Field(max_length=100)
     template_id: int | None = None
+
+
+class TemplateInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    title_template: str = Field(max_length=512)
+    description_template: str = Field(max_length=4000)
+    footer_template: str | None = Field(default=None, max_length=512)
+    color: int = Field(default=0x2F855A, ge=0, le=0xFFFFFF)
+    show_cover: StrictBool = True
+    metadata_fields: list[str] = Field(default_factory=list, max_length=100)
+
+
+def _template_command(payload: TemplateInput) -> CreateTemplate:
+    return CreateTemplate(
+        name=payload.name,
+        title_template=payload.title_template,
+        description_template=payload.description_template,
+        footer_template=payload.footer_template,
+        color=payload.color,
+        show_cover=payload.show_cover,
+        metadata_fields=tuple(payload.metadata_fields),
+    )
 
 
 def _configuration(request: Request) -> ConfigurationService:
@@ -390,6 +412,53 @@ def template_variables(_auth: Annotated[AuthenticationService, Depends(_authenti
     """Expose only the interpolation allowlist, never source metadata or credentials."""
 
     return sorted(ALLOWED_TEMPLATE_VARIABLES)
+
+
+@router.get("/templates")
+def list_templates(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> list[dict]:
+    """List declarative templates without returning any source credentials."""
+
+    with request.app.state.session_factory() as session:
+        templates = session.scalars(select(NotificationTemplate).order_by(NotificationTemplate.name, NotificationTemplate.id)).all()
+        return [
+            {
+                "id": row.id,
+                "name": row.name,
+                "title_template": row.title_template,
+                "description_template": row.description_template,
+                "footer_template": row.footer_template,
+                "color": row.color,
+                "show_cover": row.show_cover,
+                "metadata_fields": row.metadata_fields,
+                "enabled": row.enabled,
+            }
+            for row in templates
+        ]
+
+
+@router.post("/templates", status_code=status.HTTP_201_CREATED)
+def create_template(
+    request: Request, payload: TemplateInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, int]:
+    try:
+        return {"id": _configuration(request).create_template(_template_command(payload))}
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Template name already exists") from error
+
+
+@router.put("/templates/{template_id}")
+def update_template(
+    request: Request, template_id: int, payload: TemplateInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str]:
+    try:
+        _configuration(request).update_template(template_id, _template_command(payload))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Template name already exists") from error
+    return {"status": "saved"}
 
 
 @router.post("/template-preview")

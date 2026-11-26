@@ -228,3 +228,24 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
     assert http.get("/api/v1/admin/libraries").json()[0]["webhook_ids"] == [webhook_id]
     assert http.post("/api/v1/admin/servers", headers=headers, json=payload).status_code == 409
     assert http.put(f"/api/v1/admin/servers/{server_id}/enabled", headers=headers, json={"enabled": False}).status_code == 200
+
+
+def test_template_create_update_and_validation(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, _engine = client
+    monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    payload = {"name": "New books", "title_template": "{{title}}", "description_template": "{{narrators}} · {{published_year}}"}
+    assert http.get("/api/v1/admin/templates").status_code == 401
+    csrf = setup_and_login(http)
+    assert http.post("/api/v1/admin/templates", headers={"origin": ORIGIN}, json=payload).status_code == 401
+    headers = {"origin": ORIGIN, "x-csrf-token": csrf}
+    result = http.post("/api/v1/admin/templates", headers=headers, json=payload)
+    assert result.status_code == 201
+    template_id = result.json()["id"]
+    assert http.get("/api/v1/admin/templates").json()[0]["description_template"] == payload["description_template"]
+    payload["title_template"] = "{% import os %}"
+    assert http.put(f"/api/v1/admin/templates/{template_id}", headers=headers, json=payload).status_code == 400
+    assert http.get("/api/v1/admin/templates").json()[0]["title_template"] == "{{title}}"
+    payload["title_template"] = "New: {{title}}"
+    assert http.put(f"/api/v1/admin/templates/{template_id}", headers=headers, json=payload).status_code == 200
+    assert http.get("/api/v1/admin/templates").json()[0]["title_template"] == "New: {{title}}"
