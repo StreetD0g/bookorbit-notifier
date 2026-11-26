@@ -16,7 +16,7 @@ from app.database.models import Book, Event, EventType, Library, NotificationQue
 from app.database.session import create_database_engine
 from app.main import app
 from app.providers.events.bookorbit.client import BookOrbitApiError
-from app.providers.notifications.discord.client import DiscordDeliveryError
+from app.providers.notifications.discord.client import DiscordDeliveryError, DiscordWebhookOriginal
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
 from app.schemas.bookorbit import BookOrbitIdentity, BookOrbitLibrary, CoverImage
 
@@ -288,6 +288,16 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
     assert http.put(f"/api/v1/admin/webhooks/{webhook_id}", headers=headers, json=rotated).status_code == 200
     assert "bok_fixture_secret" not in http.get("/api/v1/admin/servers").text
     assert "fixture-token" not in http.get("/api/v1/admin/webhooks").text
+
+    async def fake_original(_self):
+        return DiscordWebhookOriginal(username="Original name", avatar_url="https://cdn.discordapp.com/avatars/123/a.png")
+
+    monkeypatch.setattr("app.api.admin.DiscordWebhookClient.get_original_profile", fake_original)
+    original_path = f"/api/v1/admin/webhooks/{webhook_id}/original-profile"
+    assert http.post(original_path, headers={"origin": ORIGIN}).status_code == 401
+    original = http.post(original_path, headers=headers)
+    assert original.status_code == 200 and original.json()["username"] == "Original name"
+    assert "fixture-token" not in original.text and "rotated-token" not in original.text
     with Session(engine) as session:
         assert session.get(Server, server_id).api_key_encrypted != "bok_fixture_secret"
         assert "fixture-token" not in session.get(Webhook, webhook_id).url_encrypted

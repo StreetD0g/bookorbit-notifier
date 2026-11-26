@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 from app.schemas.bookorbit import CoverImage
+
+
+@dataclass(frozen=True, slots=True)
+class DiscordWebhookOriginal:
+    """Only non-secret original display properties from Discord's webhook object."""
+
+    username: str | None
+    avatar_url: str | None
 
 
 class DiscordDeliveryError(RuntimeError):
@@ -32,6 +43,12 @@ class DiscordWebhookClient:
         timeout_seconds: float = 15.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        # HTTPX INFO logs contain complete request URLs, including webhook tokens.
+        # Its lower-level debug transport can also log request paths and headers.
+        for logger_name in ("httpx", "httpcore"):
+            logger = logging.getLogger(logger_name)
+            if logger.level < logging.WARNING:
+                logger.setLevel(logging.WARNING)
         self._webhook_url = webhook_url
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds), follow_redirects=False, transport=transport)
 
@@ -39,6 +56,33 @@ class DiscordWebhookClient:
         """Release the transport connection pool."""
 
         await self._client.aclose()
+
+    async def get_original_profile(self) -> DiscordWebhookOriginal:
+        """Read the webhook display values; do not return Discord's token-bearing object."""
+
+        try:
+            response = await self._client.get(self._webhook_url)
+        except httpx.HTTPError as error:
+            raise DiscordDeliveryError() from error
+        if not response.is_success:
+            raise DiscordDeliveryError(response.status_code, self._retry_after(response))
+        try:
+            body = response.json()
+            if not isinstance(body, dict):
+                raise ValueError("Invalid webhook profile")
+            webhook_id, name, avatar = body.get("id"), body.get("name"), body.get("avatar")
+            if not isinstance(webhook_id, str) or not re.fullmatch(r"[0-9]{1,20}", webhook_id):
+                raise ValueError("Invalid webhook identity")
+            if name is not None and (not isinstance(name, str) or len(name) > 80):
+                raise ValueError("Invalid webhook display name")
+            if avatar is not None and (not isinstance(avatar, str) or not re.fullmatch(r"(?:a_)?[0-9a-f]{32}", avatar)):
+                raise ValueError("Invalid webhook avatar hash")
+        except (ValueError, UnicodeDecodeError) as error:
+            raise DiscordDeliveryError() from error
+        # Discord documents webhook avatars as user-avatar hashes and exposes
+        # the corresponding public CDN path without the webhook token.
+        avatar_url = f"https://cdn.discordapp.com/avatars/{webhook_id}/{avatar}.png" if avatar else None
+        return DiscordWebhookOriginal(username=name, avatar_url=avatar_url)
 
     async def send_embed(
         self, embed: dict[str, Any], *, cover: CoverImage | None = None, username: str | None = None, avatar_url: str | None = None

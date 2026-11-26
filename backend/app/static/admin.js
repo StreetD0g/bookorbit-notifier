@@ -68,6 +68,8 @@ Object.assign(messages.de, {previewAvatarFailed: "Profilbild konnte im Browser n
 Object.assign(messages.en, {previewAvatarFailed: "The browser could not load the avatar."});
 Object.assign(messages.de, {avatarPrivacy: "Profilbilder werden für die Vorschau direkt im Browser vom Bildanbieter geladen. Der Anbieter sieht dabei deine IP-Adresse."});
 Object.assign(messages.en, {avatarPrivacy: "Avatar images are loaded directly from their host in your browser. The host can see your IP address."});
+Object.assign(messages.de, {loadOriginal: "Originales Webhook-Profil von Discord laden", originalLoaded: "Originales Webhook-Profil geladen.", originalAvatarLoaded: "Originales Webhook-Profilbild", originalNoAvatar: "Für diesen Webhook ist kein individuelles Profilbild gespeichert."});
+Object.assign(messages.en, {loadOriginal: "Load original webhook profile from Discord", originalLoaded: "Original webhook profile loaded.", originalAvatarLoaded: "Original webhook avatar", originalNoAvatar: "This webhook has no custom avatar."});
 messages.de.previewOriginal = "Originaler Webhook-Name (nicht abgerufen)";
 messages.en.previewOriginal = "Original webhook name (not retrieved)";
 let counts = null;
@@ -77,6 +79,7 @@ let profileRequest = 0;
 let previewRequest = 0, previewTimer;
 let selectedMetadata = [], draggedField = null;
 let senderPreviewRequest = 0, senderPreviewTimer;
+const originalProfiles = new Map();
 let servers = [], webhooks = [], libraries = [];
 let deliveries = [];
 let deliveryOffset = 0, deliveryRequest = 0;
@@ -154,11 +157,13 @@ function updatePreviewSender() {
     try {
       const result = await call("/sender-profile-preview", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify(payload)});
       if (request !== senderPreviewRequest) return;
-      document.querySelector("#preview-sender").textContent = result.username ?? strings().previewOriginal;
-      document.querySelector("#preview-avatar-status").textContent = result.avatar_url ? strings().previewAvatarCustom : strings().previewAvatarOriginal;
+      const original = originalProfiles.get(payload.webhook_id);
+      document.querySelector("#preview-sender").textContent = result.username ?? original?.username ?? strings().previewOriginal;
+      const imageUrl = result.avatar_url ?? original?.avatar_url ?? null;
+      document.querySelector("#preview-avatar-status").textContent = result.avatar_url ? strings().previewAvatarCustom : original ? (original.avatar_url ? strings().originalAvatarLoaded : strings().originalNoAvatar) : strings().previewAvatarOriginal;
       const avatar = document.querySelector("#preview-avatar-image"), fallback = document.querySelector("#preview-avatar-fallback");
-      avatar.hidden = !result.avatar_url; fallback.hidden = Boolean(result.avatar_url);
-      if (result.avatar_url) avatar.src = result.avatar_url; else avatar.removeAttribute("src");
+      avatar.hidden = !imageUrl; fallback.hidden = Boolean(imageUrl);
+      if (imageUrl) avatar.src = imageUrl; else avatar.removeAttribute("src");
     } catch { if (request === senderPreviewRequest) document.querySelector("#preview-sender").textContent = strings().previewProfileInvalid; }
   }, 250);
 }
@@ -166,6 +171,15 @@ document.querySelector("#preview-avatar-image").addEventListener("error", () => 
   document.querySelector("#preview-avatar-image").hidden = true;
   document.querySelector("#preview-avatar-fallback").hidden = false;
   document.querySelector("#preview-avatar-status").textContent = strings().previewAvatarFailed;
+});
+document.querySelector("#load-original-profile").addEventListener("click", async event => {
+  const draft = profileDraft();
+  if (!draft?.webhook_id) { message.textContent = strings().chooseWebhook; return; }
+  const webhookId = draft.webhook_id, button = event.currentTarget; button.disabled = true;
+  try {
+    const profile = await call("/webhooks/" + webhookId + "/original-profile", {...mutationOptions({}), method: "POST"});
+    originalProfiles.set(webhookId, profile); message.textContent = strings().originalLoaded; updatePreviewSender();
+  } catch { message.textContent = strings().failed; } finally { button.disabled = false; }
 });
 function populatePreviewContexts() {
   for (const [selector, entries] of [["#preview-webhook", scopes.webhooks], ["#preview-library", scopes.libraries]]) {
@@ -467,6 +481,7 @@ function renderManagement() {
       save.disabled = true;
       try {
         await call("/webhooks/" + webhook.id, mutationOptions({name: name.value, enabled: enabled.checked, webhook_url: replacing ? url.value : null, confirm_destination_change: replacing}));
+        originalProfiles.delete(webhook.id);
         try { await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().refreshFailed; }
       } catch { message.textContent = strings().failed; } finally { url.value = ""; save.disabled = false; }
     });
@@ -595,7 +610,7 @@ document.querySelector("#change-password-form").addEventListener("submit", async
   const button = event.currentTarget.querySelector("button[type=submit]"); button.disabled = true;
   try {
     await call("/change-password", {...mutationOptions({current_password: current.value, new_password: replacement.value}), method: "POST"});
-    counts = null; dashboard.hidden = true; authPanel.hidden = false; message.textContent = strings().passwordChanged;
+    originalProfiles.clear(); counts = null; dashboard.hidden = true; authPanel.hidden = false; message.textContent = strings().passwordChanged;
   } catch { message.textContent = strings().failed; }
   finally { current.value = ""; replacement.value = ""; repeat.value = ""; button.disabled = false; }
 });
@@ -628,7 +643,7 @@ document.querySelector("#profile-form").addEventListener("submit", async event =
 document.querySelector("#logout").addEventListener("click", async () => {
   try {
     await call("/logout", {method: "POST", headers: {"X-CSRF-Token": cookie("bookorbit_csrf")}});
-    counts = null; dashboard.hidden = true; authPanel.hidden = false; message.textContent = strings().signedOut;
+    originalProfiles.clear(); counts = null; dashboard.hidden = true; authPanel.hidden = false; message.textContent = strings().signedOut;
   } catch { message.textContent = strings().failed; }
 });
 refresh().catch(() => {});

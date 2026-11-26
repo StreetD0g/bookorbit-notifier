@@ -28,7 +28,7 @@ from app.database.models import (
 )
 from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.providers.events.bookorbit.factory import EncryptedBookOrbitClientFactory
-from app.providers.notifications.discord.client import DiscordDeliveryError
+from app.providers.notifications.discord.client import DiscordDeliveryError, DiscordWebhookClient
 from app.providers.notifications.discord.sender_profile import ProfileChoice, ProfileField, SenderProfile
 from app.queue.worker import (
     DiscordNotificationSender,
@@ -788,6 +788,28 @@ async def test_webhook(
     except DiscordDeliveryError as error:
         raise HTTPException(status_code=502, detail="Discord test delivery failed") from error
     return {"status": "sent"}
+
+
+@router.post("/webhooks/{webhook_id}/original-profile")
+async def original_webhook_profile(
+    request: Request, webhook_id: int, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str | None]:
+    """Fetch Discord's original name and avatar only when explicitly requested in the UI."""
+
+    _configuration(request)
+    cipher = SecretCipher(get_settings().encryption_key.get_secret_value())  # type: ignore[union-attr]
+    try:
+        target = EncryptedWebhookTargetResolver(request.app.state.session_factory, cipher).resolve(webhook_id)
+        client = DiscordWebhookClient(target.webhook_url)
+        try:
+            profile = await client.get_original_profile()
+        finally:
+            await client.aclose()
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Webhook is unavailable") from error
+    except DiscordDeliveryError as error:
+        raise HTTPException(status_code=502, detail="Discord profile could not be read") from error
+    return {"username": profile.username, "avatar_url": profile.avatar_url}
 
 
 @router.put("/webhooks/{webhook_id}")
