@@ -112,6 +112,8 @@ class WebhookInput(BaseModel):
 
 class WebhookTestInput(BaseModel):
     library_id: int | None = Field(default=None, gt=0)
+    preview: PreviewInput | None = None
+    sender_profile: SenderPreviewInput | None = None
 
 
 class ServerUpdateInput(BaseModel):
@@ -729,7 +731,7 @@ def create_webhook(request: Request, payload: WebhookInput, _auth: Annotated[Aut
 async def test_webhook(
     request: Request, webhook_id: int, payload: WebhookTestInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
 ) -> dict[str, str]:
-    """Send a fixed test message with resolved profile overrides, without modifying the webhook."""
+    """Send an explicit test with fixed or preview sample content without modifying the webhook."""
 
     _configuration(request)
     if payload.library_id is not None:
@@ -740,13 +742,42 @@ async def test_webhook(
     cipher = SecretCipher(get_settings().encryption_key.get_secret_value())  # type: ignore[union-attr]
     try:
         target = EncryptedWebhookTargetResolver(request.app.state.session_factory, cipher).resolve(webhook_id)
-        username, avatar_url = SenderProfileService(request.app.state.session_factory).resolve(payload.library_id or 0, webhook_id)
+        profiles = SenderProfileService(request.app.state.session_factory)
+        if payload.sender_profile is not None:
+            draft = payload.sender_profile
+            if draft.webhook_id != webhook_id or draft.library_id != payload.library_id:
+                raise ValueError("Preview target does not match test destination")
+            profile = SenderProfile(
+                username=ProfileField(draft.username.choice, draft.username.value),
+                avatar_url=ProfileField(draft.avatar_url.choice, draft.avatar_url.value),
+            )
+            username, avatar_url = profiles.preview(
+                draft.scope, draft.scope_id, profile, library_id=draft.library_id, webhook_id=draft.webhook_id
+            )
+        else:
+            username, avatar_url = profiles.resolve(payload.library_id or 0, webhook_id)
         target = WebhookTarget(webhook_id=target.webhook_id, webhook_url=target.webhook_url, username=username, avatar_url=avatar_url)
-        await DiscordNotificationSender().send(
-            target, OutgoingNotification(embed={"title": "BookOrbit Notifier", "description": "This is a test notification."})
+        embed = (
+            _render_sample(payload.preview)
+            if payload.preview is not None
+            else {"title": "BookOrbit Notifier", "description": "This is a test notification."}
         )
+        # Discord applies limits after template variables have been expanded.
+        footer = embed.get("footer", {}).get("text", "")
+        if (
+            len(embed["title"]) > 256
+            or len(embed["description"]) > 4096
+            or len(footer) > 2040  # Reserve room for the test marker below.
+            or len(embed["title"]) + len(embed["description"]) + len(footer) + 7 > 6000
+            or not (embed["title"] or embed["description"] or footer)
+        ):
+            raise ValueError("Invalid test embed")
+        if payload.preview is not None:
+            # Mark sample content clearly in Discord so it cannot be mistaken for a real arrival.
+            embed["footer"] = {"text": f"{footer} · TEST" if footer else "TEST"}
+        await DiscordNotificationSender().send(target, OutgoingNotification(embed=embed))
     except ValueError as error:
-        raise HTTPException(status_code=400, detail="Webhook is unavailable") from error
+        raise HTTPException(status_code=400, detail="Webhook or test preview is invalid") from error
     except DiscordDeliveryError as error:
         raise HTTPException(status_code=502, detail="Discord test delivery failed") from error
     return {"status": "sent"}
@@ -901,6 +932,15 @@ def update_template(
 def template_preview(payload: PreviewInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> dict:
     """Render deterministic sample metadata with the exact production renderer."""
 
+    try:
+        return _render_sample(payload)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+def _render_sample(payload: PreviewInput) -> dict:
+    """Use one sample consistently for preview and an explicitly requested test message."""
+
     book = Book(
         title="The Example Book",
         authors_json=["Alex Example"],
@@ -929,10 +969,7 @@ def template_preview(payload: PreviewInput, _auth: Annotated[AuthenticationServi
             "collections": [{"name": "Favorites"}],
         },
     )
-    try:
-        return render_embed(payload.title, payload.description, payload.footer, 0x2F855A, _template_values(book, "Books", "Example server"))
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+    return render_embed(payload.title, payload.description, payload.footer, 0x2F855A, _template_values(book, "Books", "Example server"))
 
 
 @router.put("/sender-profiles/{scope}")

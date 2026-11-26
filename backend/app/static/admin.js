@@ -58,6 +58,8 @@ Object.assign(messages.de, {testConnection: "Verbindung prüfen", connectionOk: 
 Object.assign(messages.en, {testConnection: "Test connection", connectionOk: "BookOrbit connection successful.", knownBooks: "Known media", libraryArrivals: "Detected arrivals", lastScan: "Last scan"});
 Object.assign(messages.de, {previewWebhook: "Webhook für Profilvorschau", previewLibrary: "Bibliothek für Profilvorschau", noContext: "Keine Auswahl", previewAvatarCustom: "Profilbild-URL konfiguriert (Bildvorschau noch nicht verfügbar)", previewAvatarOriginal: "Originales Webhook-Profilbild (nicht abgerufen)", previewProfileInvalid: "Absenderprofil ungültig"});
 Object.assign(messages.en, {previewWebhook: "Webhook for profile preview", previewLibrary: "Library for profile preview", noContext: "No selection", previewAvatarCustom: "Avatar URL configured (image preview not yet available)", previewAvatarOriginal: "Original webhook avatar (not retrieved)", previewProfileInvalid: "Invalid sender profile"});
+Object.assign(messages.de, {sendPreview: "Vorschau als Testnachricht senden", chooseWebhook: "Bitte wähle einen Webhook für die Vorschau.", confirmPreview: "Diese Vorschau mit Beispieldaten tatsächlich an den ausgewählten Discord-Webhook senden?"});
+Object.assign(messages.en, {sendPreview: "Send preview as test message", chooseWebhook: "Please select a webhook for the preview.", confirmPreview: "Send this preview with sample data to the selected Discord webhook?"});
 messages.de.previewAvatarCustom = "Benutzerdefiniertes Profilbild";
 messages.en.previewAvatarCustom = "Custom avatar";
 Object.assign(messages.de, {previewAvatarFailed: "Profilbild konnte im Browser nicht geladen werden."});
@@ -131,16 +133,20 @@ async function loadProfile() {
   form.hidden = false;
   updatePreviewSender();
 }
+function profileDraft() {
+  const scope = document.querySelector("#profile-scope").value, target = document.querySelector("#profile-target").value;
+  if (scope !== "global" && !target) return null;
+  const field = name => { const choice = document.querySelector("#" + name + "-choice").value; return {choice, value: choice === "custom" ? document.querySelector("#" + name + "-value").value : null}; };
+  const webhook = scope === "webhook" ? target : document.querySelector("#preview-webhook").value;
+  const library = scope === "library" ? target : document.querySelector("#preview-library").value;
+  return {scope, scope_id: scope === "global" ? null : Number(target), webhook_id: webhook ? Number(webhook) : null, library_id: library ? Number(library) : null, username: field("username"), avatar_url: field("avatar")};
+}
 function updatePreviewSender() {
   clearTimeout(senderPreviewTimer);
   const request = ++senderPreviewRequest;
   senderPreviewTimer = setTimeout(async () => {
-    const scope = document.querySelector("#profile-scope").value, target = document.querySelector("#profile-target").value;
-    if (scope !== "global" && !target) return;
-    const field = name => { const choice = document.querySelector("#" + name + "-choice").value; return {choice, value: choice === "custom" ? document.querySelector("#" + name + "-value").value : null}; };
-    const webhook = scope === "webhook" ? target : document.querySelector("#preview-webhook").value;
-    const library = scope === "library" ? target : document.querySelector("#preview-library").value;
-    const payload = {scope, scope_id: scope === "global" ? null : Number(target), webhook_id: webhook ? Number(webhook) : null, library_id: library ? Number(library) : null, username: field("username"), avatar_url: field("avatar")};
+    const payload = profileDraft();
+    if (!payload) return;
     try {
       const result = await call("/sender-profile-preview", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify(payload)});
       if (request !== senderPreviewRequest) return;
@@ -508,6 +514,17 @@ document.querySelector("#save-template").addEventListener("click", async () => {
     document.querySelector("#template-select").value = String(selected?.id ?? result.id);
     message.textContent = strings().configuredOk;
   } catch { message.textContent = strings().failed; }
+});
+document.querySelector("#send-preview").addEventListener("click", async event => {
+  const draft = profileDraft();
+  if (!draft?.webhook_id) { message.textContent = strings().chooseWebhook; return; }
+  if (!window.confirm(strings().confirmPreview)) return;
+  const button = event.currentTarget; button.disabled = true;
+  const preview = {title: document.querySelector("#preview-title").value, description: document.querySelector("#preview-description").value, footer: document.querySelector("#preview-footer").value};
+  try {
+    await call("/webhooks/" + draft.webhook_id + "/test", {...mutationOptions({library_id: draft.library_id, preview, sender_profile: draft}), method: "POST"});
+    message.textContent = strings().testSent;
+  } catch { message.textContent = strings().failed; } finally { button.disabled = false; }
 });
 language.addEventListener("change", translate);
 document.querySelector("#profile-scope").addEventListener("change", () => selectScope().catch(() => { message.textContent = strings().failed; }));

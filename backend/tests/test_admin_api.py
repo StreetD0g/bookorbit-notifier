@@ -335,6 +335,33 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
     assert result.status_code == 200 and "fixture-token" not in result.text
     assert captured[0][0] == "Library Bot" and captured[0][1] is None
     assert http.post(test_path, headers=headers, json={"library_id": 999}).status_code == 400
+    draft = {
+        "scope": "library",
+        "scope_id": library["id"],
+        "library_id": library["id"],
+        "webhook_id": webhook_id,
+        "username": {"choice": "custom", "value": "Draft Bot"},
+        "avatar_url": {"choice": "original"},
+    }
+    preview = {"title": "{{title}} ({{published_year}})", "description": "{{narrators}}"}
+    assert (
+        http.post(test_path, headers=headers, json={"library_id": library["id"], "preview": preview, "sender_profile": draft}).status_code
+        == 200
+    )
+    assert captured[1][0] == "Draft Bot" and captured[1][2]["title"] == "The Example Book (2024)"
+    assert captured[1][2]["description"] == "Sam Example"
+    assert captured[1][2]["footer"]["text"] == "TEST"
+    assert http.get(f"/api/v1/admin/sender-profiles/library?scope_id={library['id']}").json()["username"]["value"] == "Library Bot"
+    mismatched = {**draft, "webhook_id": webhook_id + 1}
+    assert http.post(test_path, headers=headers, json={"library_id": library["id"], "sender_profile": mismatched}).status_code == 400
+    assert (
+        http.post(
+            test_path, headers=headers, json={"library_id": library["id"], "preview": {"title": "{{invalid}}", "description": ""}}
+        ).status_code
+        == 400
+    )
+    assert http.post(test_path, headers=headers, json={"preview": {"title": "a" * 257, "description": ""}}).status_code == 400
+    assert len(captured) == 2
 
     async def fake_failure(_self, _target, _notification):
         raise DiscordDeliveryError(429)
