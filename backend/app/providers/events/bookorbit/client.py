@@ -45,6 +45,7 @@ class BookOrbitClient:
         api_key: str,
         *,
         timeout_seconds: float = 15.0,
+        verify_ssl: bool = True,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = str(base_url).rstrip("/")
@@ -53,6 +54,7 @@ class BookOrbitClient:
             base_url=f"{self._base_url}/api/v1/",
             headers=self._headers,
             timeout=httpx.Timeout(timeout_seconds),
+            verify=verify_ssl,
             follow_redirects=False,
             transport=transport,
         )
