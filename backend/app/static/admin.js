@@ -70,8 +70,8 @@ Object.assign(messages.de, {avatarPrivacy: "Profilbilder werden für die Vorscha
 Object.assign(messages.en, {avatarPrivacy: "Avatar images are loaded directly from their host in your browser. The host can see your IP address."});
 Object.assign(messages.de, {loadOriginal: "Originales Webhook-Profil von Discord laden", originalLoaded: "Originales Webhook-Profil geladen.", originalAvatarLoaded: "Originales Webhook-Profilbild", originalNoAvatar: "Für diesen Webhook ist kein individuelles Profilbild gespeichert."});
 Object.assign(messages.en, {loadOriginal: "Load original webhook profile from Discord", originalLoaded: "Original webhook profile loaded.", originalAvatarLoaded: "Original webhook avatar", originalNoAvatar: "This webhook has no custom avatar."});
-Object.assign(messages.de, {showCover: "Cover in Benachrichtigungen anzeigen", coverPreviewHint: "Die Beispielvorschau und ihre Testnachricht enthalten kein echtes BookOrbit-Cover."});
-Object.assign(messages.en, {showCover: "Show covers in notifications", coverPreviewHint: "The sample preview and its test message do not contain a real BookOrbit cover."});
+Object.assign(messages.de, {showCover: "Cover in Benachrichtigungen anzeigen", coverPreviewHint: "Die Vorschau und ihre Testnachricht verwenden ein Beispiel-Cover, kein echtes BookOrbit-Cover.", variableUnavailable: "noch nicht verfügbar"});
+Object.assign(messages.en, {showCover: "Show covers in notifications", coverPreviewHint: "The preview and its test message use a sample cover, not a real BookOrbit cover.", variableUnavailable: "not available yet"});
 messages.de.previewOriginal = "Originaler Webhook-Name (nicht abgerufen)";
 messages.en.previewOriginal = "Original webhook name (not retrieved)";
 let counts = null;
@@ -99,6 +99,9 @@ function translate() {
   renderDeliveries();
   populateTemplateSelector();
   renderMetadataFields();
+  for (const option of document.querySelectorAll("#preview-variable option")) {
+    option.textContent = "{{" + option.value + "}}" + (option.disabled ? " — " + strings().variableUnavailable : "");
+  }
   populateArrivalFilters();
   renderArrivals();
   updatePreviewSender();
@@ -213,12 +216,13 @@ async function renderPreview() {
 function queuePreview() { clearTimeout(previewTimer); ++previewRequest; previewTimer = setTimeout(renderPreview, 250); }
 function previewDraft() {
   return {title: document.querySelector("#preview-title").value, description: document.querySelector("#preview-description").value,
-    footer: document.querySelector("#preview-footer").value, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), metadata_fields: [...selectedMetadata]};
+    footer: document.querySelector("#preview-footer").value, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), metadata_fields: [...selectedMetadata], show_cover: document.querySelector("#template-show-cover").checked};
 }
 function renderMetadataFields() {
   const list = document.querySelector("#metadata-fields"); list.replaceChildren();
   selectedMetadata.forEach((name, index) => {
-    const item = document.createElement("li"), label = document.createElement("span"); item.draggable = true; label.textContent = "{{" + name + "}}"; item.append(label);
+    const item = document.createElement("li"), label = document.createElement("span"); item.draggable = true;
+    label.textContent = "{{" + name + "}}" + (["book_url", "cover_url"].includes(name) ? " — " + strings().variableUnavailable : ""); item.append(label);
     const move = (destination) => { if (destination < 0 || destination >= selectedMetadata.length) return; const [value] = selectedMetadata.splice(index, 1); selectedMetadata.splice(destination, 0, value); renderMetadataFields(); queuePreview(); };
     for (const [caption, delta] of [[strings().moveUp, -1], [strings().moveDown, 1]]) {
       const button = document.createElement("button"); button.type = "button"; button.textContent = caption; button.setAttribute("aria-label", caption + " " + name);
@@ -271,7 +275,8 @@ async function refresh() {
   const variableSelect = document.querySelector("#preview-variable");
   variableSelect.replaceChildren();
   for (const variable of variables) {
-    const option = document.createElement("option"); option.value = variable; option.textContent = "{{" + variable + "}}"; variableSelect.append(option);
+    const option = document.createElement("option"); option.value = variable; option.disabled = ["book_url", "cover_url"].includes(variable);
+    option.textContent = "{{" + variable + "}}" + (option.disabled ? " — " + strings().variableUnavailable : ""); variableSelect.append(option);
   }
   await selectScope();
   queuePreview();
@@ -549,6 +554,7 @@ document.querySelector("#template-select").addEventListener("change", event => {
   const template = templates.find(item => String(item.id) === event.target.value);
   document.querySelector("#template-name").value = template?.name || "";
   document.querySelector("#template-show-cover").checked = template?.show_cover ?? true;
+  document.querySelector("#preview-cover").hidden = !document.querySelector("#template-show-cover").checked;
   if (template) {
     document.querySelector("#preview-title").value = template.title_template;
     document.querySelector("#preview-description").value = template.description_template;
@@ -583,6 +589,7 @@ language.addEventListener("change", translate);
 document.querySelector("#profile-scope").addEventListener("change", () => selectScope().catch(() => { message.textContent = strings().failed; }));
 document.querySelector("#profile-target").addEventListener("change", () => { populatePreviewContexts(); loadProfile().catch(() => { message.textContent = strings().failed; }); });
 for (const selector of ["#preview-title", "#preview-description", "#preview-footer", "#preview-color"]) document.querySelector(selector).addEventListener("input", queuePreview);
+document.querySelector("#template-show-cover").addEventListener("change", event => { document.querySelector("#preview-cover").hidden = !event.target.checked; });
 for (const selector of ["#username-choice", "#username-value", "#avatar-choice", "#avatar-value", "#preview-webhook", "#preview-library"]) document.querySelector(selector).addEventListener("input", updatePreviewSender);
 document.querySelector("#insert-variable").addEventListener("click", () => {
   const input = document.querySelector("#preview-description");

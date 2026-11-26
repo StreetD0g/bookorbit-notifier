@@ -2,6 +2,7 @@
 
 from datetime import UTC, date, datetime, time, timedelta
 from hmac import compare_digest
+from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlsplit
 
@@ -38,6 +39,7 @@ from app.queue.worker import (
     _template_values,
     render_embed,
 )
+from app.schemas.bookorbit import CoverImage
 from app.services.authentication import AuthenticationService
 from app.services.configuration import ConfigurationService, CreateServer, CreateTemplate, CreateWebhook, UpdateServer, UpdateWebhook
 from app.services.dashboard import DashboardService
@@ -86,6 +88,7 @@ class PreviewInput(BaseModel):
     footer: str | None = Field(default=None, max_length=512)
     color: int = Field(default=0x2F855A, ge=0, le=0xFFFFFF)
     metadata_fields: list[str] = Field(default_factory=list, max_length=25)
+    show_cover: StrictBool = False
 
 
 class ProfileScopeItem(BaseModel):
@@ -782,7 +785,11 @@ async def test_webhook(
         if payload.preview is not None:
             # Mark sample content clearly in Discord so it cannot be mistaken for a real arrival.
             embed["footer"] = {"text": f"{footer} · TEST" if footer else "TEST"}
-        await DiscordNotificationSender().send(target, OutgoingNotification(embed=embed))
+        cover = None
+        if payload.preview is not None and payload.preview.show_cover:
+            sample_path = Path(__file__).resolve().parent.parent / "static" / "sample-cover.png"
+            cover = CoverImage(content=sample_path.read_bytes(), content_type="image/png", filename="sample-cover.png")
+        await DiscordNotificationSender().send(target, OutgoingNotification(embed=embed, cover=cover))
     except ValueError as error:
         raise HTTPException(status_code=400, detail="Webhook or test preview is invalid") from error
     except DiscordDeliveryError as error:

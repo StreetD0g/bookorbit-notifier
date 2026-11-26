@@ -346,7 +346,7 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
     captured = []
 
     async def fake_send(_self, target, notification):
-        captured.append((target.username, target.avatar_url, notification.embed))
+        captured.append((target.username, target.avatar_url, notification.embed, notification.cover))
         return "message-id", 200
 
     monkeypatch.setattr("app.api.admin.DiscordNotificationSender.send", fake_send)
@@ -364,7 +364,13 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
         "username": {"choice": "custom", "value": "Draft Bot"},
         "avatar_url": {"choice": "original"},
     }
-    preview = {"title": "{{title}} ({{published_year}})", "description": "{{narrators}}", "color": 0x123456, "metadata_fields": ["isbn13"]}
+    preview = {
+        "title": "{{title}} ({{published_year}})",
+        "description": "{{narrators}}",
+        "color": 0x123456,
+        "metadata_fields": ["isbn13"],
+        "show_cover": True,
+    }
     assert (
         http.post(test_path, headers=headers, json={"library_id": library["id"], "preview": preview, "sender_profile": draft}).status_code
         == 200
@@ -373,6 +379,9 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
     assert captured[1][2]["description"] == "Sam Example"
     assert captured[1][2]["fields"][0]["name"] == "Isbn13" and captured[1][2]["color"] == 0x123456
     assert captured[1][2]["footer"]["text"] == "TEST"
+    assert captured[0][3] is None
+    assert captured[1][3].content_type == "image/png" and captured[1][3].content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert captured[1][3].content == http.get("/admin-assets/sample-cover.png").content
     assert http.get(f"/api/v1/admin/sender-profiles/library?scope_id={library['id']}").json()["username"]["value"] == "Library Bot"
     mismatched = {**draft, "webhook_id": webhook_id + 1}
     assert http.post(test_path, headers=headers, json={"library_id": library["id"], "sender_profile": mismatched}).status_code == 400
@@ -385,6 +394,8 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
     assert http.post(test_path, headers=headers, json={"preview": {"title": "a" * 257, "description": ""}}).status_code == 200
     assert len(captured[2][2]["title"]) == 256 and captured[2][2]["title"].endswith("…")
     assert len(captured) == 3
+    assert http.post(test_path, headers=headers, json={"preview": {**preview, "show_cover": False}}).status_code == 200
+    assert captured[-1][3] is None
 
     async def fake_failure(_self, _target, _notification):
         raise DiscordDeliveryError(429)
