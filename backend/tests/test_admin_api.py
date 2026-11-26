@@ -12,12 +12,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.database.base import Base
-from app.database.models import Event, Library, NotificationQueueItem, QueueStatus, Server, Webhook
+from app.database.models import Book, Event, EventType, Library, NotificationQueueItem, QueueStatus, Server, Webhook
 from app.database.session import create_database_engine
 from app.main import app
 from app.providers.notifications.discord.client import DiscordDeliveryError
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
-from app.schemas.bookorbit import BookOrbitLibrary
+from app.schemas.bookorbit import BookOrbitLibrary, CoverImage
 
 ORIGIN = "https://notifier.example"
 SETUP_TOKEN = "setup-token-for-testing-only-123456789"
@@ -377,3 +377,48 @@ def test_password_change_requires_csrf_and_current_password(client) -> None:
     assert http.get("/api/v1/admin/notifications/summary").status_code == 401
     assert http.post("/api/v1/admin/login", headers={"origin": ORIGIN}, json={"password": PASSWORD}).status_code == 401
     assert http.post("/api/v1/admin/login", headers={"origin": ORIGIN}, json={"password": payload["new_password"]}).status_code == 200
+
+
+def test_arrival_cover_uses_protected_source_without_exposing_credentials(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, engine = client
+    assert http.get("/api/v1/admin/arrivals/1/cover").status_code == 401
+    monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    setup_and_login(http)
+    with Session(engine) as session:
+        source = Server(name="Source", base_url="https://books.example", api_key_encrypted="encrypted")
+        library = Library(server=source, name="Books", bookorbit_library_id=1)
+        book = Book(server=source, library=library, bookorbit_book_id=17, title="Test")
+        session.add(book)
+        session.flush()
+        event = Event(server_id=source.id, library_id=library.id, book_id=book.id, event_type=EventType.BOOK_ADDED)
+        session.add(event)
+        session.commit()
+        event_id = event.id
+
+    class FakeClient:
+        async def get_cover(self, book_id):
+            assert book_id == 17
+            return CoverImage(content=b"fake-image", content_type="image/png", filename="cover.png")
+
+    @asynccontextmanager
+    async def fake_connect(_self, _server_id):
+        yield FakeClient()
+
+    monkeypatch.setattr("app.api.admin.EncryptedBookOrbitClientFactory.connect", fake_connect)
+    response = http.get(f"/api/v1/admin/arrivals/{event_id}/cover")
+    assert response.status_code == 200 and response.content == b"fake-image"
+    assert response.headers["content-type"] == "image/png" and response.headers["cache-control"] == "private, no-store"
+    assert "books.example" not in str(response.headers) and "encrypted" not in str(response.headers)
+    assert http.get("/api/v1/admin/arrivals/999/cover").status_code == 404
+
+    class UnsafeClient:
+        async def get_cover(self, _book_id):
+            return CoverImage(content=b"<svg/>", content_type="image/svg+xml", filename="cover.svg")
+
+    @asynccontextmanager
+    async def unsafe_connect(_self, _server_id):
+        yield UnsafeClient()
+
+    monkeypatch.setattr("app.api.admin.EncryptedBookOrbitClientFactory.connect", unsafe_connect)
+    assert http.get(f"/api/v1/admin/arrivals/{event_id}/cover").status_code == 502

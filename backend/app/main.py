@@ -96,7 +96,7 @@ def admin_page() -> FileResponse:
         headers={
             "Cache-Control": "no-store",
             "Content-Security-Policy": (
-                "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
+                "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; "
                 "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
             ),
             "X-Content-Type-Options": "nosniff",

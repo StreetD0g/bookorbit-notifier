@@ -50,6 +50,8 @@ Object.assign(messages.de, {theme: "Darstellung", darkTheme: "Dunkel", lightThem
 Object.assign(messages.en, {theme: "Appearance", darkTheme: "Dark", lightTheme: "Light"});
 Object.assign(messages.de, {details: "Details und Zustellhistorie", historyTruncated: "Weitere ältere Zustellversuche werden hier nicht angezeigt.", title: "Titel", subtitle: "Untertitel", authors: "Autoren", series: "Reihe", series_index: "Reihennummer", genres: "Genres", languageField: "Sprache", formats: "Formate", narrators: "Sprecher", duration_seconds: "Dauer (Sekunden)", description: "Beschreibung", isbn10: "ISBN-10", isbn13: "ISBN-13", publisher: "Verlag", published_date: "Erscheinungsdatum", published_year: "Erscheinungsjahr", page_count: "Seiten", tags: "Schlagwörter", edition_name: "Ausgabe"});
 Object.assign(messages.en, {details: "Details and delivery history", historyTruncated: "Further older delivery attempts are not displayed here.", title: "Title", subtitle: "Subtitle", authors: "Authors", series: "Series", series_index: "Series number", genres: "Genres", languageField: "Language", formats: "Formats", narrators: "Narrators", duration_seconds: "Duration (seconds)", description: "Description", isbn10: "ISBN-10", isbn13: "ISBN-13", publisher: "Publisher", published_date: "Published date", published_year: "Published year", page_count: "Pages", tags: "Tags", edition_name: "Edition"});
+Object.assign(messages.de, {showCover: "Cover laden", coverUnavailable: "Cover nicht verfügbar", coverAlt: "Cover des Mediums"});
+Object.assign(messages.en, {showCover: "Load cover", coverUnavailable: "Cover unavailable", coverAlt: "Media cover"});
 let counts = null;
 let overview = null;
 let scopes = {libraries: [], webhooks: []};
@@ -224,6 +226,15 @@ function renderArrivals() {
       if (!details.open || content.dataset.loaded === "true") return;
       try {
         const data = await call("/arrivals/" + arrival.event_id); content.replaceChildren();
+        const coverButton = document.createElement("button"), coverStatus = document.createElement("span");
+        coverButton.type = "button"; coverButton.textContent = strings().showCover;
+        coverButton.addEventListener("click", () => {
+          const image = document.createElement("img"); image.className = "arrival-cover"; image.alt = strings().coverAlt;
+          image.addEventListener("error", () => { image.remove(); coverStatus.textContent = strings().coverUnavailable; });
+          image.src = "/api/v1/admin/arrivals/" + encodeURIComponent(arrival.event_id) + "/cover";
+          coverButton.disabled = true; content.insertBefore(image, coverStatus);
+        });
+        content.append(coverButton, coverStatus);
         const metadata = document.createElement("dl");
         for (const [key, value] of Object.entries(data.metadata)) {
           if (value === null || value === "" || (Array.isArray(value) && value.length === 0)) continue;

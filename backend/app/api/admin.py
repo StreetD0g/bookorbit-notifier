@@ -470,6 +470,34 @@ def arrival_detail(request: Request, event_id: int, _auth: Annotated[Authenticat
         }
 
 
+@router.get("/arrivals/{event_id}/cover", response_class=Response)
+async def arrival_cover(request: Request, event_id: int, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> Response:
+    """Fetch one cover over the authenticated source connection without exposing the source URL."""
+
+    with request.app.state.session_factory() as session:
+        event = session.get(Event, event_id)
+        if event is None or event.event_type != EventType.BOOK_ADDED:
+            raise HTTPException(status_code=404, detail="Arrival not found")
+        server_id, book_id = event.server_id, event.book.bookorbit_book_id
+    _configuration(request)
+    cipher = SecretCipher(get_settings().encryption_key.get_secret_value())  # type: ignore[union-attr]
+    factory = EncryptedBookOrbitClientFactory(request.app.state.session_factory, cipher)
+    try:
+        async with factory.connect(server_id) as client:
+            cover = await client.get_cover(book_id)
+    except (BookOrbitApiError, ValueError) as error:
+        raise HTTPException(status_code=502, detail="Cover unavailable") from error
+    if cover is None:
+        raise HTTPException(status_code=404, detail="Cover unavailable")
+    if cover.content_type not in {"image/jpeg", "image/png", "image/webp"} or not cover.content or len(cover.content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=502, detail="Cover unavailable")
+    return Response(
+        content=cover.content,
+        media_type=cover.content_type,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 @router.get("/notifications/{queue_item_id}/history")
 def history(request: Request, queue_item_id: int, _auth: Annotated[AuthenticationService, Depends(_authenticated)]):
     """Return the redacted delivery history for one queue entry."""
