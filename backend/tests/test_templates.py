@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.base import Base
 from app.database.models import Book, Event, EventStatus, Library, NotificationTemplate, Server
-from app.queue.worker import DefaultEmbedBuilder
+from app.queue.worker import DefaultEmbedBuilder, _template_values
 from app.templates.safe import render_template, validate_template_syntax
 
 
@@ -50,3 +50,34 @@ def test_default_embed_builder_uses_library_template(tmp_path: Path) -> None:
         "footer": {"text": "Source"},
     }
     engine.dispose()
+
+
+def test_bookorbit_detail_and_card_variables_handle_narrators_and_missing_audio() -> None:
+    """Official detail narrator objects render as names, and older card shapes remain usable."""
+
+    book = Book(
+        title="Example",
+        authors_json=["Author"],
+        source_added_at="2026-01-01",
+        source_updated_at="2026-02-01",
+        metadata_json={
+            "publishedYear": 2024,
+            "pageCount": 320,
+            "isbn10": "123",
+            "isbn13": "456",
+            "tags": ["Fantasy"],
+            "audioMetadata": {"narrators": [{"id": 1, "name": "Narrator"}], "durationSeconds": 1234, "abridged": False},
+            "collections": [{"id": 1, "name": "Favorites"}],
+            "files": [{"format": "mp3"}],
+        },
+    )
+    values = _template_values(book, "Books", "Server")
+    assert (
+        render_template("{{published_year}} / {{page_count}} / {{narrators}} / {{duration_seconds}}", values)
+        == "2024 / 320 / Narrator / 1234"
+    )
+    assert values["collections"] == ["Favorites"]
+    book.metadata_json = {"audioMetadata": None, "narrators": ["Card narrator"], "files": None}
+    values = _template_values(book, "Books", "Server")
+    assert values["narrators"] == ["Card narrator"]
+    assert values["formats"] == []

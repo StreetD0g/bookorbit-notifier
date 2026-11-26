@@ -55,6 +55,25 @@
         <input id="avatar-value" type="url" maxlength="2048">
         <button type="submit" data-text="save">Speichern</button>
       </form>
+      <section aria-labelledby="preview-heading" class="preview-editor">
+        <h2 id="preview-heading" data-text="previewTitle">Discord-Live-Vorschau</h2>
+        <p data-text="previewHint">Beispieldaten; Änderungen an dieser Vorschau werden nicht gespeichert oder versendet.</p>
+        <label for="preview-title" data-text="embedTitle">Titel</label>
+        <input id="preview-title" type="text" maxlength="512" value="Neu: {{title}}">
+        <label for="preview-description" data-text="embedDescription">Beschreibung</label>
+        <textarea id="preview-description" rows="6" maxlength="4000">{{authors}} · {{published_year}}
+{{narrators}} · {{page_count}} Seiten</textarea>
+        <label for="preview-footer" data-text="embedFooter">Fußzeile</label>
+        <input id="preview-footer" type="text" maxlength="512" value="{{library}} · {{server}}">
+        <label for="preview-variable" data-text="variable">Variable</label>
+        <select id="preview-variable"></select>
+        <button type="button" id="insert-variable" data-text="insertVariable">In Beschreibung einfügen</button>
+        <div class="discord-preview" aria-live="polite">
+          <div class="discord-avatar" aria-hidden="true">B</div>
+          <div><strong id="preview-sender">BookOrbit Notifier</strong><div class="discord-embed"><strong id="preview-rendered-title"></strong><p id="preview-rendered-description"></p><small id="preview-rendered-footer"></small></div></div>
+        </div>
+        <p id="preview-error" role="status"></p>
+      </section>
     </section>
   </main>
 </body>

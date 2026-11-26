@@ -161,3 +161,22 @@ def test_profile_scope_list_is_authenticated_and_redacted(client) -> None:
         == 200
     )
     assert http.get("/api/v1/admin/sender-profiles/library?scope_id=1").json()["username"]["value"] == "Books"
+
+
+def test_preview_renders_verified_variables_and_requires_csrf(client) -> None:
+    http, _engine = client
+    payload = {"title": "{{title}} ({{published_year}})", "description": "{{narrators}} / {{page_count}} / {{duration_seconds}}"}
+    assert http.get("/api/v1/admin/template-variables").status_code == 401
+    csrf = setup_and_login(http)
+    variables = http.get("/api/v1/admin/template-variables").json()
+    assert {"published_year", "narrators", "page_count", "duration_seconds"}.issubset(variables)
+    assert http.post("/api/v1/admin/template-preview", headers={"origin": ORIGIN}, json=payload).status_code == 401
+    headers = {"origin": ORIGIN, "x-csrf-token": csrf}
+    result = http.post("/api/v1/admin/template-preview", headers=headers, json=payload)
+    assert result.status_code == 200
+    assert result.json()["title"] == "The Example Book (2024)"
+    assert result.json()["description"] == "Sam Example / 320 / 28800"
+    assert (
+        http.post("/api/v1/admin/template-preview", headers=headers, json={"title": "{{not_allowed}}", "description": ""}).status_code
+        == 400
+    )

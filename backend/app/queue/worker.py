@@ -109,13 +109,9 @@ class DefaultEmbedBuilder:
             template = library.template if library.template and library.template.enabled else None
             if template is not None:
                 values = _template_values(book, library.name, book.server.name)
-                embed: dict[str, Any] = {
-                    "title": render_template(template.title_template, values),
-                    "description": render_template(template.description_template, values),
-                    "color": template.color,
-                }
-                if template.footer_template:
-                    embed["footer"] = {"text": render_template(template.footer_template, values)}
+                embed = render_embed(
+                    template.title_template, template.description_template, template.footer_template, template.color, values
+                )
                 return OutgoingNotification(embed=embed)
             description = authors or "New media detected in BookOrbit"
             return OutgoingNotification(
@@ -131,6 +127,14 @@ def _template_values(book: Book, library_name: str, server_name: str) -> dict[st
     """Map stored BookOrbit metadata into documented template variables only."""
 
     metadata = book.metadata_json
+    audio = metadata.get("audioMetadata")
+    audio = audio if isinstance(audio, dict) else {}
+    narrator_refs = audio.get("narrators")
+    if not isinstance(narrator_refs, list):
+        narrator_refs = metadata.get("narrators")
+    narrators = _names(narrator_refs)
+    files = metadata.get("files")
+    files = files if isinstance(files, list) else []
     return {
         "title": book.title,
         "subtitle": metadata.get("subtitle"),
@@ -141,20 +145,53 @@ def _template_values(book: Book, library_name: str, server_name: str) -> dict[st
         "server": server_name,
         "genres": metadata.get("genres"),
         "language": metadata.get("language"),
-        "formats": [file.get("format") for file in metadata.get("files", []) if isinstance(file, dict)],
-        "narrators": metadata.get("audioMetadata", {}).get("narrators") if isinstance(metadata.get("audioMetadata"), dict) else None,
-        "duration": metadata.get("audioMetadata", {}).get("durationSeconds") if isinstance(metadata.get("audioMetadata"), dict) else None,
+        "formats": [file.get("format") for file in files if isinstance(file, dict)],
+        "narrators": narrators,
+        "duration": audio.get("durationSeconds"),
+        "duration_seconds": audio.get("durationSeconds"),
+        "audio_abridged": audio.get("abridged"),
         "description": metadata.get("description"),
         "isbn": metadata.get("isbn13"),
         "publisher": metadata.get("publisher"),
         "published_date": metadata.get("publishedDate"),
+        "published_year": metadata.get("publishedYear"),
+        "original_published_year": metadata.get("originalPublishedYear"),
+        "isbn10": metadata.get("isbn10"),
+        "isbn13": metadata.get("isbn13"),
+        "tags": metadata.get("tags"),
+        "collections": _names(metadata.get("collections")),
+        "edition_name": metadata.get("editionName"),
+        "rating": metadata.get("rating"),
         "page_count": metadata.get("pageCount"),
         "age_rating": metadata.get("ageRating"),
         "content_warnings": metadata.get("contentWarnings"),
         "date_added": book.source_added_at,
+        "date_updated": book.source_updated_at,
         "book_url": "",
         "cover_url": "",
     }
+
+
+def _names(value: object) -> list[str]:
+    """Both BookCard strings and BookDetail name objects are valid source shapes."""
+
+    if not isinstance(value, list):
+        return []
+    names: list[str] = []
+    for item in value:
+        name = item.get("name") if isinstance(item, dict) else item
+        if isinstance(name, str) and name:
+            names.append(name)
+    return names
+
+
+def render_embed(title: str, description: str, footer: str | None, color: int, values: dict[str, object]) -> dict[str, Any]:
+    """Use the same strict interpolation for Discord delivery and administrator preview."""
+
+    embed: dict[str, Any] = {"title": render_template(title, values), "description": render_template(description, values), "color": color}
+    if footer:
+        embed["footer"] = {"text": render_template(footer, values)}
+    return embed
 
 
 class DiscordNotificationSender:

@@ -64,6 +64,12 @@ Each `BookCard` returned in `items` has at least a numeric `id`; the current sou
 
 BookOrbit represents a logical book and exposes an array of attached files. Therefore the notifier should emit a `BOOK_ADDED` event per newly observed **book ID**, not per file. File additions to an existing ID remain out of scope for the MVP.
 
+### Fields available for notification templates
+
+The pinned upstream `packages/types/src/book.ts` describes the following `BookDetail` fields: `title`, `subtitle`, `description`, `authors[].name`, `seriesName`, `seriesIndex`, `genres`, `tags`, `language`, `publisher`, `publishedDate`, `publishedYear`, `pageCount`, `isbn10`, `isbn13`, `rating`, `addedAt`, `updatedAt`, `files[].format`, `collections[].name`, and `audioMetadata` with `narrators[].name`, `durationSeconds`, and `abridged`. `editionName` and `originalPublishedYear` are optional on newer servers. Each field may be absent or null; duration is in seconds. Book cards instead expose narrator names directly as strings. Account-specific notes, reading progress, filesystem paths, and provider identifiers are deliberately excluded from templates.
+
+The notifier exposes corresponding snake-case variables, including `{{published_year}}`, `{{page_count}}`, `{{narrators}}`, and `{{duration_seconds}}`. Missing values render empty. Existing compatibility placeholders `{{age_rating}}` and `{{content_warnings}}` are not confirmed in the inspected `BookDetail` type and must not be assumed present. `{{book_url}}` and `{{cover_url}}` remain empty until safe, verified link handling is implemented. The prior real-instance probe established that detail retrieval works; the field mapping above is source-verified, not yet verified field-by-field against a pinned real release.
+
 ## Covers and direct links
 
 Covers require the same authenticated request as other book routes. The notifier must download and validate the bytes itself, then attach them to the Discord webhook and reference `attachment://…`; it must never embed a BookOrbit API key in a Discord URL. The public BookOrbit base URL, if configured, is only for a user-facing direct book link and is never used for API authentication.
@@ -94,5 +100,7 @@ This is useful evidence that real-time detection is technically possible, but Bo
 - [BookOrbit API keys guide](https://github.com/bookorbit/bookorbit/blob/main/docs/API_KEYS.md)
 - [BookOrbit API compatibility notice](https://github.com/bookorbit/bookorbit/blob/main/README.md#-api-compatibility)
 - [Book controller](https://github.com/bookorbit/bookorbit/blob/main/server/src/modules/book/book.controller.ts)
+- [Book and audio response types at the inspected revision](https://github.com/bookorbit/bookorbit/blob/f7a2a5df406ac913b5fc6603c0b2465ec5356f98/packages/types/src/book.ts)
+- [Narrator response type at the inspected revision](https://github.com/bookorbit/bookorbit/blob/f7a2a5df406ac913b5fc6603c0b2465ec5356f98/packages/types/src/audiobook.ts)
 - [Library controller](https://github.com/bookorbit/bookorbit/blob/main/server/src/modules/library/library.controller.ts)
 - [Scan gateway](https://github.com/bookorbit/bookorbit/blob/main/server/src/modules/scanner/scan.gateway.ts)

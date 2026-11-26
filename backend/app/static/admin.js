@@ -13,14 +13,18 @@ Object.assign(messages.de, {globalProfile: "Globales Absenderprofil", senderName
 Object.assign(messages.en, {globalProfile: "Global sender profile", senderName: "Sender name", avatar: "Avatar", inherit: "Inherit", original: "Original webhook", custom: "Custom", nameValue: "Custom name", avatarValue: "Public HTTPS image URL", save: "Save", saved: "Sender profile saved."});
 Object.assign(messages.de, {senderProfile: "Absenderprofil", profileScope: "Konfigurationsebene", globalScope: "Global", webhookScope: "Webhook", libraryScope: "Bibliothek", profileTarget: "Auswahl", noTargets: "Für diese Ebene ist noch kein Eintrag vorhanden."});
 Object.assign(messages.en, {senderProfile: "Sender profile", profileScope: "Configuration level", globalScope: "Global", webhookScope: "Webhook", libraryScope: "Library", profileTarget: "Selection", noTargets: "No entries exist for this level yet."});
+Object.assign(messages.de, {previewTitle: "Discord-Live-Vorschau", previewHint: "Beispieldaten; Änderungen an dieser Vorschau werden nicht gespeichert oder versendet.", embedTitle: "Titel", embedDescription: "Beschreibung", embedFooter: "Fußzeile", variable: "Variable", insertVariable: "In Beschreibung einfügen", previewInvalid: "Ungültige Vorlage. Bitte prüfe die Variablen.", previewOriginal: "Original / übergeordnet"});
+Object.assign(messages.en, {previewTitle: "Discord live preview", previewHint: "Sample data; preview changes are not saved or sent.", embedTitle: "Title", embedDescription: "Description", embedFooter: "Footer", variable: "Variable", insertVariable: "Insert into description", previewInvalid: "Invalid template. Please check the variables.", previewOriginal: "Original / inherited"});
 let counts = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
+let previewRequest = 0, previewTimer;
 function strings() { return messages[language.value]; }
 function translate() {
   document.documentElement.lang = language.value;
   document.querySelectorAll("[data-text]").forEach(element => { element.textContent = strings()[element.dataset.text]; });
   if (counts) renderCounts(counts);
+  updatePreviewSender();
 }
 function cookie(name) {
   const value = document.cookie.split("; ").find(item => item.startsWith(name + "="));
@@ -58,7 +62,25 @@ async function loadProfile() {
     document.querySelector("#" + name + "-value").value = field.value || "";
   }
   form.hidden = false;
+  updatePreviewSender();
 }
+function updatePreviewSender() {
+  const choice = document.querySelector("#username-choice").value;
+  document.querySelector("#preview-sender").textContent = choice === "custom" ? document.querySelector("#username-value").value : strings().previewOriginal;
+}
+async function renderPreview() {
+  const request = ++previewRequest;
+  const error = document.querySelector("#preview-error");
+  try {
+    const data = await call("/template-preview", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify({title: document.querySelector("#preview-title").value, description: document.querySelector("#preview-description").value, footer: document.querySelector("#preview-footer").value})});
+    if (request !== previewRequest) return;
+    document.querySelector("#preview-rendered-title").textContent = data.title;
+    document.querySelector("#preview-rendered-description").textContent = data.description;
+    document.querySelector("#preview-rendered-footer").textContent = data.footer?.text || "";
+    error.textContent = "";
+  } catch { if (request === previewRequest) error.textContent = strings().previewInvalid; }
+}
+function queuePreview() { clearTimeout(previewTimer); ++previewRequest; previewTimer = setTimeout(renderPreview, 250); }
 async function selectScope() {
   const scope = document.querySelector("#profile-scope").value;
   const target = document.querySelector("#profile-target");
@@ -80,7 +102,14 @@ async function selectScope() {
 async function refresh() {
   counts = await call("/notifications/summary");
   scopes = await call("/profile-scopes");
+  const variables = await call("/template-variables");
+  const variableSelect = document.querySelector("#preview-variable");
+  variableSelect.replaceChildren();
+  for (const variable of variables) {
+    const option = document.createElement("option"); option.value = variable; option.textContent = "{{" + variable + "}}"; variableSelect.append(option);
+  }
   await selectScope();
+  queuePreview();
   renderCounts(counts);
   authPanel.hidden = true;
   dashboard.hidden = false;
@@ -88,6 +117,13 @@ async function refresh() {
 language.addEventListener("change", translate);
 document.querySelector("#profile-scope").addEventListener("change", () => selectScope().catch(() => { message.textContent = strings().failed; }));
 document.querySelector("#profile-target").addEventListener("change", () => loadProfile().catch(() => { message.textContent = strings().failed; }));
+for (const selector of ["#preview-title", "#preview-description", "#preview-footer"]) document.querySelector(selector).addEventListener("input", queuePreview);
+for (const selector of ["#username-choice", "#username-value"]) document.querySelector(selector).addEventListener("input", updatePreviewSender);
+document.querySelector("#insert-variable").addEventListener("click", () => {
+  const input = document.querySelector("#preview-description");
+  input.setRangeText("{{" + document.querySelector("#preview-variable").value + "}}", input.selectionStart, input.selectionEnd, "end");
+  input.focus(); queuePreview();
+});
 document.querySelector("#login-form").addEventListener("submit", async event => {
   event.preventDefault();
   const input = document.querySelector("#password");

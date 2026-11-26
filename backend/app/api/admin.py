@@ -5,15 +5,17 @@ from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
-from pydantic import BaseModel, SecretStr, StrictBool
+from pydantic import BaseModel, Field, SecretStr, StrictBool
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.database.models import Library, Server, Webhook
+from app.database.models import Book, Library, Server, Webhook
 from app.providers.notifications.discord.sender_profile import ProfileChoice, ProfileField, SenderProfile
+from app.queue.worker import _template_values, render_embed
 from app.services.authentication import AuthenticationService
 from app.services.notifications import NotificationAdministrationService
 from app.services.sender_profiles import SenderProfileService
+from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES
 
 router = APIRouter(prefix="/admin", tags=["administrator"])
 _SESSION_COOKIE = "bookorbit_session"
@@ -36,6 +38,12 @@ class ProfileFieldInput(BaseModel):
 class ProfileInput(BaseModel):
     username: ProfileFieldInput
     avatar_url: ProfileFieldInput
+
+
+class PreviewInput(BaseModel):
+    title: str = Field(max_length=512)
+    description: str = Field(max_length=4000)
+    footer: str | None = Field(default=None, max_length=512)
 
 
 class ProfileScopeItem(BaseModel):
@@ -197,6 +205,51 @@ def profile_scopes(request: Request, _auth: Annotated[AuthenticationService, Dep
             libraries=[ProfileScopeItem(id=row[0], name=row[1], server_name=row[2]) for row in libraries],
             webhooks=[ProfileScopeItem(id=row[0], name=row[1]) for row in webhooks],
         )
+
+
+@router.get("/template-variables")
+def template_variables(_auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> list[str]:
+    """Expose only the interpolation allowlist, never source metadata or credentials."""
+
+    return sorted(ALLOWED_TEMPLATE_VARIABLES)
+
+
+@router.post("/template-preview")
+def template_preview(payload: PreviewInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> dict:
+    """Render deterministic sample metadata with the exact production renderer."""
+
+    book = Book(
+        title="The Example Book",
+        authors_json=["Alex Example"],
+        source_added_at="2026-11-26T12:00:00Z",
+        source_updated_at="2026-11-26T13:00:00Z",
+        metadata_json={
+            "subtitle": "A sample story",
+            "seriesName": "Example series",
+            "seriesIndex": "2",
+            "publishedYear": 2024,
+            "originalPublishedYear": 2020,
+            "publishedDate": "2024-05-10",
+            "pageCount": 320,
+            "language": "de",
+            "authors": [{"name": "Alex Example"}],
+            "genres": ["Fantasy"],
+            "tags": ["Adventure"],
+            "publisher": "Example Press",
+            "isbn10": "0123456789",
+            "isbn13": "9780123456789",
+            "editionName": "Example edition",
+            "rating": 4,
+            "description": "A sample description.",
+            "files": [{"format": "epub"}, {"format": "mp3"}],
+            "audioMetadata": {"narrators": [{"name": "Sam Example"}], "durationSeconds": 28800, "abridged": False},
+            "collections": [{"name": "Favorites"}],
+        },
+    )
+    try:
+        return render_embed(payload.title, payload.description, payload.footer, 0x2F855A, _template_values(book, "Books", "Example server"))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.put("/sender-profiles/{scope}")
