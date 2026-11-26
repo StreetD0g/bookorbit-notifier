@@ -27,7 +27,8 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [ ] Implement the configurable recurring polling scheduler and manual-scan trigger.
 - [x] Implement transactional per-webhook outbox state transitions, exponential backoff, and Discord retry-hint handling.
 - [x] Implement configurable metadata delay, bounded detail refresh, deadline release, and stale-send recovery.
-- [ ] Implement the outbound Discord delivery worker and safe recovery observability.
+- [x] Implement the outbound Discord delivery worker over the persistent outbox.
+- [ ] Add authenticated delivery/recovery observability and manual retry controls.
 - [ ] Add integration tests for restart, partial scan, source outage, and Discord outage behaviour.
 
 ## Phase 3 – multi-server routing
