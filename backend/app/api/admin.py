@@ -1,17 +1,29 @@
 """Opt-in administrator authentication and notification status endpoints."""
 
+from datetime import UTC, date, datetime, time, timedelta
 from hmac import compare_digest
 from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field, SecretStr, StrictBool
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
 from app.core.crypto import SecretCipher
-from app.database.models import Book, DeliveryMode, Event, EventType, Library, NotificationQueueItem, NotificationTemplate, Server, Webhook
+from app.database.models import (
+    Book,
+    DeliveryMode,
+    Event,
+    EventType,
+    Library,
+    NotificationQueueItem,
+    NotificationTemplate,
+    QueueStatus,
+    Server,
+    Webhook,
+)
 from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.providers.events.bookorbit.factory import EncryptedBookOrbitClientFactory
 from app.providers.notifications.discord.client import DiscordDeliveryError
@@ -301,11 +313,20 @@ def list_arrivals(
     _auth: Annotated[AuthenticationService, Depends(_authenticated)],
     server_id: int | None = Query(default=None, gt=0),
     library_id: int | None = Query(default=None, gt=0),
+    author: str | None = Query(default=None, min_length=1, max_length=120),
+    genre: str | None = Query(default=None, min_length=1, max_length=120),
+    media_format: str | None = Query(default=None, min_length=1, max_length=32),
+    language: str | None = Query(default=None, min_length=1, max_length=32),
+    detected_from: date | None = None,
+    detected_to: date | None = None,
+    delivery_status: QueueStatus | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> list[dict]:
     """List detected arrivals only; baseline inventory is not represented as a new event."""
 
+    if detected_from is not None and detected_to is not None and detected_from > detected_to:
+        raise HTTPException(status_code=400, detail="Detection date range is invalid")
     with request.app.state.session_factory() as session:
         query = (
             select(Event, Book, Server.name, Library.name)
@@ -318,6 +339,38 @@ def list_arrivals(
             query = query.where(Event.server_id == server_id)
         if library_id is not None:
             query = query.where(Event.library_id == library_id)
+        if author:
+            author_values = func.json_each(Book.authors_json).table_valued("value").alias("author_values")
+            query = query.where(
+                select(1)
+                .select_from(author_values)
+                .where(func.lower(author_values.c.value).contains(author.lower(), autoescape=True))
+                .exists()
+            )
+        if genre:
+            genre_values = func.json_each(Book.metadata_json, "$.genres").table_valued("value").alias("genre_values")
+            query = query.where(select(1).select_from(genre_values).where(func.lower(genre_values.c.value) == genre.lower()).exists())
+        if media_format:
+            file_values = func.json_each(Book.metadata_json, "$.files").table_valued("value").alias("file_values")
+            query = query.where(
+                select(1)
+                .select_from(file_values)
+                .where(func.lower(func.json_extract(file_values.c.value, "$.format")) == media_format.lower())
+                .exists()
+            )
+        if language:
+            query = query.where(func.lower(func.json_extract(Book.metadata_json, "$.language")) == language.lower())
+        if detected_from is not None:
+            query = query.where(Event.detected_at >= datetime.combine(detected_from, time.min, tzinfo=UTC))
+        if detected_to is not None and detected_to != date.max:
+            query = query.where(Event.detected_at < datetime.combine(detected_to + timedelta(days=1), time.min, tzinfo=UTC))
+        if delivery_status is not None:
+            query = query.where(
+                select(1)
+                .select_from(NotificationQueueItem)
+                .where(NotificationQueueItem.event_id == Event.id, NotificationQueueItem.status == delivery_status)
+                .exists()
+            )
         rows = session.execute(query.order_by(Event.detected_at.desc(), Event.id.desc()).limit(limit).offset(offset)).all()
         event_ids = [event.id for event, _book, _server, _library in rows]
         delivery_rows = (

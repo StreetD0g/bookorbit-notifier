@@ -105,7 +105,15 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
             session,
             server_id=server.id,
             library_id=library.id,
-            observed_books=[ObservedBook(bookorbit_book_id=1, title="Existing"), ObservedBook(bookorbit_book_id=2, title="New")],
+            observed_books=[
+                ObservedBook(bookorbit_book_id=1, title="Existing"),
+                ObservedBook(
+                    bookorbit_book_id=2,
+                    title="New",
+                    authors=["Jane Author"],
+                    metadata={"language": "de", "genres": ["Fantasy"], "files": [{"format": "epub"}]},
+                ),
+            ],
             scan_complete=True,
         )
         session.commit()
@@ -122,6 +130,16 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
     assert "encrypted" not in str(arrivals)
     assert http.get("/api/v1/admin/arrivals?server_id=999").json() == []
     assert http.get("/api/v1/admin/arrivals?limit=101").status_code == 422
+    assert (
+        len(http.get("/api/v1/admin/arrivals?author=author&genre=fantasy&media_format=EPUB&language=DE&delivery_status=SENT").json()) == 1
+    )
+    assert http.get("/api/v1/admin/arrivals?author=missing").json() == []
+    assert http.get("/api/v1/admin/arrivals?genre=missing").json() == []
+    assert http.get("/api/v1/admin/arrivals?media_format=mp3").json() == []
+    assert http.get("/api/v1/admin/arrivals?delivery_status=FAILED").json() == []
+    detected_day = arrivals[0]["detected_at"].split("T")[0]
+    assert len(http.get(f"/api/v1/admin/arrivals?detected_from={detected_day}&detected_to={detected_day}").json()) == 1
+    assert http.get("/api/v1/admin/arrivals?detected_from=2026-12-31&detected_to=2026-01-01").status_code == 400
     path = f"/api/v1/admin/notifications/{item_id}/retry"
     listing = http.get("/api/v1/admin/notifications")
     assert listing.status_code == 200 and listing.json()[0]["book_title"] == "New"

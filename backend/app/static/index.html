@@ -48,8 +48,27 @@
         <select id="arrivals-server"></select>
         <label for="arrivals-library" data-text="arrivalsLibrary">Bibliothek</label>
         <select id="arrivals-library"></select>
+        <details>
+          <summary data-text="advancedFilters">Weitere Filter</summary>
+          <form id="arrivals-filters">
+            <label for="arrivals-author" data-text="filterAuthor">Autor</label><input id="arrivals-author" maxlength="120">
+            <label for="arrivals-genre" data-text="filterGenre">Genre</label><input id="arrivals-genre" maxlength="120">
+            <label for="arrivals-format" data-text="filterFormat">Medienformat</label><input id="arrivals-format" maxlength="32">
+            <label for="arrivals-language" data-text="filterLanguage">Sprache</label><input id="arrivals-language" maxlength="32">
+            <label for="arrivals-from" data-text="filterFrom">Erkannt ab (UTC)</label><input id="arrivals-from" type="date">
+            <label for="arrivals-to" data-text="filterTo">Erkannt bis (UTC)</label><input id="arrivals-to" type="date">
+            <label for="arrivals-status" data-text="deliveryStates">Zustellstatus</label>
+            <select id="arrivals-status"><option value="" data-text="all">Alle</option><option value="WAITING_FOR_METADATA">WAITING_FOR_METADATA</option><option value="READY">READY</option><option value="QUEUED">QUEUED</option><option value="SENDING">SENDING</option><option value="SENT">SENT</option><option value="RETRY">RETRY</option><option value="FAILED">FAILED</option><option value="SKIPPED">SKIPPED</option></select>
+            <button type="submit" data-text="applyFilters">Filter anwenden</button>
+          </form>
+        </details>
         <button type="button" id="arrivals-refresh" data-text="refresh">Aktualisieren</button>
         <div id="arrivals-list"></div>
+        <nav aria-label="Neuzugänge Seiten">
+          <button type="button" id="arrivals-previous" data-text="previous">Zurück</button>
+          <span id="arrivals-page" aria-live="polite"></span>
+          <button type="button" id="arrivals-next" data-text="next">Weiter</button>
+        </nav>
       </section>
       <details class="management">
         <summary data-text="changePassword">Passwort ändern</summary>

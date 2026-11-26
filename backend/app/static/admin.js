@@ -35,6 +35,10 @@ Object.assign(messages.de, {arrivals: "Neuzugänge", arrivalsHelp: "Erkannte Neu
 Object.assign(messages.en, {arrivals: "New arrivals", arrivalsHelp: "Detected arrivals; the silent initial baseline is excluded.", arrivalsServer: "Server", arrivalsLibrary: "Library", all: "All", noArrivals: "No arrivals match this selection.", eventStatus: "Event status", deliveryStates: "Delivery status"});
 Object.assign(messages.de, {overview: "Übersicht", utcNote: "Zeiträume beziehen sich auf UTC. Der Serverstatus zeigt die Konfiguration, keine Live-Erreichbarkeit.", library_count: "Bibliotheken", monitored_count: "Überwachte Bibliotheken", book_count: "Bekannte Medien", arrivals_today: "Neuzugänge heute", arrivals_week: "Neuzugänge diese Woche", arrivals_month: "Neuzugänge diesen Monat", last_successful_scan: "Letzter erfolgreicher Scan", configuredServers: "Aktive / konfigurierte Server"});
 Object.assign(messages.en, {overview: "Overview", utcNote: "Periods use UTC. Server status describes configuration, not live connectivity.", library_count: "Libraries", monitored_count: "Monitored libraries", book_count: "Known media", arrivals_today: "Arrivals today", arrivals_week: "Arrivals this week", arrivals_month: "Arrivals this month", last_successful_scan: "Last successful scan", configuredServers: "Enabled / configured servers"});
+Object.assign(messages.de, {advancedFilters: "Weitere Filter", filterAuthor: "Autor", filterGenre: "Genre", filterFormat: "Medienformat", filterLanguage: "Sprache", filterFrom: "Erkannt ab (UTC)", filterTo: "Erkannt bis (UTC)", applyFilters: "Filter anwenden"});
+Object.assign(messages.en, {advancedFilters: "More filters", filterAuthor: "Author", filterGenre: "Genre", filterFormat: "Media format", filterLanguage: "Language", filterFrom: "Detected from (UTC)", filterTo: "Detected through (UTC)", applyFilters: "Apply filters"});
+Object.assign(messages.de, {previous: "Zurück", next: "Weiter", page: "Seite"});
+Object.assign(messages.en, {previous: "Previous", next: "Next", page: "Page"});
 let counts = null;
 let overview = null;
 let scopes = {libraries: [], webhooks: []};
@@ -45,6 +49,7 @@ let deliveries = [];
 let templates = [];
 let arrivals = [];
 let arrivalsRequest = 0;
+let arrivalsOffset = 0;
 function strings() { return messages[language.value]; }
 function translate() {
   document.documentElement.lang = language.value;
@@ -182,12 +187,19 @@ async function loadArrivals() {
   const server = document.querySelector("#arrivals-server").value, library = document.querySelector("#arrivals-library").value;
   if (server) params.set("server_id", server);
   if (library) params.set("library_id", library);
+  params.set("offset", String(arrivalsOffset));
+  for (const [selector, key] of [["#arrivals-author", "author"], ["#arrivals-genre", "genre"], ["#arrivals-format", "media_format"], ["#arrivals-language", "language"], ["#arrivals-from", "detected_from"], ["#arrivals-to", "detected_to"], ["#arrivals-status", "delivery_status"]]) {
+    const value = document.querySelector(selector).value.trim(); if (value) params.set(key, value);
+  }
   const result = await call("/arrivals?" + params.toString());
   if (request !== arrivalsRequest) return;
   arrivals = result; renderArrivals();
 }
 function renderArrivals() {
   const container = document.querySelector("#arrivals-list"); container.replaceChildren();
+  document.querySelector("#arrivals-previous").disabled = arrivalsOffset === 0;
+  document.querySelector("#arrivals-next").disabled = arrivals.length < 50;
+  document.querySelector("#arrivals-page").textContent = strings().page + " " + (Math.floor(arrivalsOffset / 50) + 1);
   if (!arrivals.length) { const empty = document.createElement("p"); empty.textContent = strings().noArrivals; container.append(empty); return; }
   for (const arrival of arrivals) {
     const card = document.createElement("div"); card.className = "library-card";
@@ -198,9 +210,12 @@ function renderArrivals() {
     container.append(card);
   }
 }
-document.querySelector("#arrivals-server").addEventListener("change", () => { populateArrivalFilters(); loadArrivals().catch(() => { message.textContent = strings().failed; }); });
-document.querySelector("#arrivals-library").addEventListener("change", () => loadArrivals().catch(() => { message.textContent = strings().failed; }));
+document.querySelector("#arrivals-server").addEventListener("change", () => { arrivalsOffset = 0; populateArrivalFilters(); loadArrivals().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#arrivals-library").addEventListener("change", () => { arrivalsOffset = 0; loadArrivals().catch(() => { message.textContent = strings().failed; }); });
 document.querySelector("#arrivals-refresh").addEventListener("click", () => loadArrivals().catch(() => { message.textContent = strings().failed; }));
+document.querySelector("#arrivals-filters").addEventListener("submit", event => { event.preventDefault(); arrivalsOffset = 0; loadArrivals().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#arrivals-previous").addEventListener("click", () => { arrivalsOffset = Math.max(0, arrivalsOffset - 50); loadArrivals().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#arrivals-next").addEventListener("click", () => { arrivalsOffset += 50; loadArrivals().catch(() => { message.textContent = strings().failed; }); });
 function renderDeliveries() {
   const list = document.querySelector("#delivery-list"); list.replaceChildren();
   for (const delivery of deliveries) {
