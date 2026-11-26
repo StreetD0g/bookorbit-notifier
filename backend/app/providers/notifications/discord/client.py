@@ -40,13 +40,14 @@ class DiscordWebhookClient:
 
         await self._client.aclose()
 
-    async def send_embed(self, embed: dict[str, Any], *, cover: CoverImage | None = None) -> tuple[str | None, int]:
+    async def send_embed(
+        self, embed: dict[str, Any], *, cover: CoverImage | None = None, username: str | None = None, avatar_url: str | None = None
+    ) -> tuple[str | None, int]:
         """Post one embed and optionally refer to an uploaded image attachment."""
 
         if cover is None:
-            return await self.send_embeds([embed])
-        payload = {"embeds": [embed]}
-        payload["embeds"][0]["thumbnail"] = {"url": f"attachment://{cover.filename}"}
+            return await self.send_embeds([embed], username=username, avatar_url=avatar_url)
+        payload = _payload([{**embed, "thumbnail": {"url": f"attachment://{cover.filename}"}}], username, avatar_url)
         request = self._client.build_request(
             "POST",
             self._webhook_url,
@@ -57,12 +58,16 @@ class DiscordWebhookClient:
 
         return await self._send_request(request)
 
-    async def send_embeds(self, embeds: list[dict[str, Any]]) -> tuple[str | None, int]:
+    async def send_embeds(
+        self, embeds: list[dict[str, Any]], *, username: str | None = None, avatar_url: str | None = None
+    ) -> tuple[str | None, int]:
         """Send one Discord message containing one to ten embeds without source attachments."""
 
         if not 1 <= len(embeds) <= 10:
             raise ValueError("Discord messages must contain between one and ten embeds")
-        request = self._client.build_request("POST", self._webhook_url, params={"wait": "true"}, json={"embeds": embeds})
+        request = self._client.build_request(
+            "POST", self._webhook_url, params={"wait": "true"}, json=_payload(embeds, username, avatar_url)
+        )
         return await self._send_request(request)
 
     async def _send_request(self, request: httpx.Request) -> tuple[str | None, int]:
@@ -100,3 +105,14 @@ class DiscordWebhookClient:
             return float(value) if value is not None else None
         except (ValueError, TypeError):
             return None
+
+
+def _payload(embeds: list[dict[str, Any]], username: str | None, avatar_url: str | None) -> dict[str, Any]:
+    """Omit unset fields so Discord retains the webhook's original values."""
+
+    payload: dict[str, Any] = {"embeds": embeds}
+    if username is not None:
+        payload["username"] = username
+    if avatar_url is not None:
+        payload["avatar_url"] = avatar_url
+    return payload
