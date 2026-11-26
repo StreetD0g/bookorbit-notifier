@@ -76,6 +76,10 @@ Object.assign(messages.de, {mainNavigation: "Hauptnavigation", arrivalPages: "Ne
 Object.assign(messages.en, {mainNavigation: "Main navigation", arrivalPages: "Arrival pages", historyPages: "Delivery pages"});
 Object.assign(messages.de, {settings: "Settings", sectionNavigation: "Bereichsnavigation"});
 Object.assign(messages.en, {settings: "Settings", sectionNavigation: "Section navigation"});
+Object.assign(messages.de, {arrivalView: "Ansicht", arrivalList: "Liste", arrivalTable: "Tabelle", arrivalGrid: "Cover-Grid", arrivalSource: "Quelle", arrivalDate: "Erkannt", arrivalStatus: "Status"});
+Object.assign(messages.en, {arrivalView: "View", arrivalList: "List", arrivalTable: "Table", arrivalGrid: "Cover grid", arrivalSource: "Source", arrivalDate: "Detected", arrivalStatus: "Status"});
+messages.de.loadCover = "Cover laden";
+messages.en.loadCover = "Load cover";
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
 Object.assign(messages.en, {seriesNumbered: "Series tag with number", seriesUnnumbered: "Series tag without number", seriesTagHelp: "Use {{series_tag}} as a variable or metadata field. It is empty when there is no series. Both formats support {{series}} and {{series_index}}.", sampleSeries: "Series example for preview", sampleSeriesNumbered: "Numbered series", sampleSeriesUnnumbered: "Unnumbered series", sampleSeriesNone: "No series"});
 messages.de.previewOriginal = "Originaler Webhook-Name (nicht abgerufen)";
@@ -348,18 +352,7 @@ async function loadArrivals() {
   if (request !== arrivalsRequest) return;
   arrivals = result; renderArrivals();
 }
-function renderArrivals() {
-  const container = document.querySelector("#arrivals-list"); container.replaceChildren();
-  document.querySelector("#arrivals-previous").disabled = arrivalsOffset === 0;
-  document.querySelector("#arrivals-next").disabled = arrivals.length < 50;
-  document.querySelector("#arrivals-page").textContent = strings().page + " " + (Math.floor(arrivalsOffset / 50) + 1);
-  if (!arrivals.length) { const empty = document.createElement("p"); empty.textContent = strings().noArrivals; container.append(empty); return; }
-  for (const arrival of arrivals) {
-    const card = document.createElement("div"); card.className = "library-card";
-    const title = document.createElement("h3"); title.textContent = arrival.title || "—"; card.append(title);
-    const authors = document.createElement("p"); authors.textContent = arrival.authors.join(", "); card.append(authors);
-    const source = document.createElement("p"); source.textContent = [arrival.server_name, arrival.library_name, arrival.detected_at].join(" · "); card.append(source);
-    const state = document.createElement("p"); state.textContent = strings().eventStatus + ": " + arrival.status + " · " + strings().deliveryStates + ": " + arrival.delivery_statuses.join(", "); card.append(state);
+function createArrivalDetails(arrival) {
     const details = document.createElement("details"), summary = document.createElement("summary"), content = document.createElement("div");
     summary.textContent = strings().details; details.append(summary, content);
     details.addEventListener("toggle", async () => {
@@ -367,7 +360,7 @@ function renderArrivals() {
       try {
         const data = await call("/arrivals/" + arrival.event_id); content.replaceChildren();
         const coverButton = document.createElement("button"), coverStatus = document.createElement("span");
-        coverButton.type = "button"; coverButton.textContent = strings().showCover;
+        coverButton.type = "button"; coverButton.textContent = strings().loadCover;
         coverButton.addEventListener("click", () => {
           const image = document.createElement("img"); image.className = "arrival-cover"; image.alt = strings().coverAlt;
           image.addEventListener("error", () => { image.remove(); coverStatus.textContent = strings().coverUnavailable; });
@@ -393,10 +386,49 @@ function renderArrivals() {
         content.dataset.loaded = "true";
       } catch { message.textContent = strings().failed; }
     });
-    card.append(details);
-    container.append(card);
+    return details;
+}
+function renderArrivals() {
+  const container = document.querySelector("#arrivals-list"), view = document.querySelector("#arrivals-view").value;
+  container.replaceChildren(); container.className = view === "grid" && arrivals.length ? "arrival-grid" : "";
+  document.querySelector("#arrivals-previous").disabled = arrivalsOffset === 0;
+  document.querySelector("#arrivals-next").disabled = arrivals.length < 50;
+  document.querySelector("#arrivals-page").textContent = strings().page + " " + (Math.floor(arrivalsOffset / 50) + 1);
+  if (!arrivals.length) { const empty = document.createElement("p"); empty.textContent = strings().noArrivals; container.append(empty); return; }
+  let tableBody = null;
+  if (view === "table") {
+    const wrap = document.createElement("div"), table = document.createElement("table"), head = document.createElement("thead"), row = document.createElement("tr");
+    wrap.className = "arrival-table-wrap"; table.className = "arrival-table";
+    for (const label of [strings().title, strings().authors, strings().arrivalSource, strings().arrivalDate, strings().arrivalStatus, strings().details]) {
+      const header = document.createElement("th"); header.scope = "col"; header.textContent = label; row.append(header);
+    }
+    head.append(row); tableBody = document.createElement("tbody"); table.append(head, tableBody); wrap.append(table); container.append(wrap);
+  }
+  for (const arrival of arrivals) {
+    const source = [arrival.server_name, arrival.library_name].join(" · ");
+    const state = strings().eventStatus + ": " + arrival.status + " · " + strings().deliveryStates + ": " + arrival.delivery_statuses.join(", ");
+    if (tableBody) {
+      const row = document.createElement("tr");
+      for (const value of [arrival.title || "—", arrival.authors.join(", "), source, arrival.detected_at, state]) {
+        const cell = document.createElement("td"); cell.textContent = value; row.append(cell);
+      }
+      const detailsCell = document.createElement("td"); detailsCell.append(createArrivalDetails(arrival)); row.append(detailsCell); tableBody.append(row);
+      continue;
+    }
+    const card = document.createElement("div"); card.className = "library-card";
+    if (view === "grid") {
+      const image = document.createElement("img"); image.className = "arrival-grid-cover"; image.loading = "lazy"; image.alt = strings().coverAlt;
+      image.addEventListener("error", () => { image.removeAttribute("src"); image.alt = strings().coverUnavailable; });
+      image.src = "/api/v1/admin/arrivals/" + encodeURIComponent(arrival.event_id) + "/cover"; card.append(image);
+    }
+    const title = document.createElement("h3"); title.textContent = arrival.title || "—"; card.append(title);
+    const authors = document.createElement("p"); authors.textContent = arrival.authors.join(", "); card.append(authors);
+    const sourceLine = document.createElement("p"); sourceLine.textContent = [source, arrival.detected_at].join(" · "); card.append(sourceLine);
+    const stateLine = document.createElement("p"); stateLine.textContent = state; card.append(stateLine);
+    card.append(createArrivalDetails(arrival)); container.append(card);
   }
 }
+document.querySelector("#arrivals-view").addEventListener("change", renderArrivals);
 document.querySelector("#arrivals-server").addEventListener("change", () => { arrivalsOffset = 0; populateArrivalFilters(); loadArrivals().catch(() => { message.textContent = strings().failed; }); });
 document.querySelector("#arrivals-library").addEventListener("change", () => { arrivalsOffset = 0; loadArrivals().catch(() => { message.textContent = strings().failed; }); });
 document.querySelector("#arrivals-refresh").addEventListener("click", () => loadArrivals().catch(() => { message.textContent = strings().failed; }));
