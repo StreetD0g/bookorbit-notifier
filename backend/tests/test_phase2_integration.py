@@ -96,6 +96,8 @@ async def test_new_book_flows_from_bookorbit_polling_to_discord_delivery(
             return httpx.Response(200, json={"items": source_books, "total": len(source_books), "page": 0, "size": 200})
         if request.method == "GET" and request.url.path == "/api/v1/books/2":
             return httpx.Response(200, json=_book_detail(2, "New arrival"))
+        if request.method == "GET" and request.url.path == "/api/v1/books/2/cover":
+            return httpx.Response(200, content=b"fixture-cover", headers={"content-type": "image/png"})
         return httpx.Response(404)
 
     polling = BookOrbitPollingService(factory)
@@ -115,13 +117,27 @@ async def test_new_book_flows_from_bookorbit_polling_to_discord_delivery(
         discord_requests.append(request)
         assert request.url.params["wait"] == "true"
         assert b"New arrival" in request.content
+        assert b"fixture-cover" in request.content
+        assert b"attachment://cover-2.png" in request.content
+        assert b"bok_read_only" not in request.content
+        assert "authorization" not in request.headers
         return httpx.Response(200, json={"id": "discord-message-1"})
+
+    class CoverProvider:
+        async def get_cover(self, server_id: int, book_id: int):
+            assert server_id == server.id
+            client = BookOrbitClient("https://books.example", "bok_read_only", transport=httpx.MockTransport(bookorbit_handler))
+            try:
+                return await client.get_cover(book_id)
+            finally:
+                await client.aclose()
 
     worker = DiscordDeliveryWorker(
         factory,
         StaticWebhookResolver(),
         DefaultEmbedBuilder(factory),
         SimulatedDiscordSender(httpx.MockTransport(discord_handler)),
+        cover_provider=CoverProvider(),
     )
     delivery_report = await worker.process_once(now=datetime.now(UTC) + timedelta(seconds=2))
 

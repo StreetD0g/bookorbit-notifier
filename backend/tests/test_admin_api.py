@@ -231,7 +231,10 @@ def test_profile_scope_list_is_authenticated_and_redacted(client) -> None:
 
 def test_preview_renders_verified_variables_and_requires_csrf(client) -> None:
     http, _engine = client
-    payload = {"title": "{{title}} ({{published_year}})", "description": "{{narrators}} / {{page_count}} / {{duration_seconds}}"}
+    payload = {
+        "title": "{{title}} ({{published_year}})",
+        "description": "{{narrators}} / {{page_count}} / {{duration}} / {{duration_seconds}}",
+    }
     assert http.get("/api/v1/admin/template-variables").status_code == 401
     csrf = setup_and_login(http)
     variables = http.get("/api/v1/admin/template-variables").json()
@@ -241,7 +244,7 @@ def test_preview_renders_verified_variables_and_requires_csrf(client) -> None:
     result = http.post("/api/v1/admin/template-preview", headers=headers, json=payload)
     assert result.status_code == 200
     assert result.json()["title"] == "The Example Book (2024)"
-    assert result.json()["description"] == "Sam Example / 320 / 28800"
+    assert result.json()["description"] == "Sam Example / 320 / 08:00 / 28800"
     styled = {**payload, "color": 0x123456, "metadata_fields": ["narrators", "isbn13", "page_count"]}
     rendered = http.post("/api/v1/admin/template-preview", headers=headers, json=styled)
     assert rendered.status_code == 200 and rendered.json()["color"] == 0x123456

@@ -49,15 +49,17 @@ async def lifespan(app: FastAPI):
         return
     assert settings.encryption_key is not None
     cipher = SecretCipher(settings.encryption_key.get_secret_value())
+    source_clients = EncryptedBookOrbitClientFactory(session_factory, cipher)
     scheduler = RuntimeScheduler(
         session_factory,
-        EncryptedBookOrbitClientFactory(session_factory, cipher),
+        source_clients,
         BookOrbitPollingService(session_factory),
         MetadataRefreshService(session_factory),
         DiscordDeliveryWorker(
             session_factory,
             EncryptedWebhookTargetResolver(session_factory, cipher),
             DefaultEmbedBuilder(session_factory),
+            cover_provider=source_clients,
         ),
     )
     stop_event = asyncio.Event()

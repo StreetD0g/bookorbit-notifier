@@ -9,7 +9,7 @@ from app.database.base import Base
 from app.database.models import Event, Library, NotificationQueueItem, QueueStatus, Server, Webhook
 from app.providers.notifications.discord.client import DiscordDeliveryError
 from app.queue.state import mark_event_ready
-from app.queue.worker import DiscordDeliveryWorker, OutgoingNotification, WebhookTarget
+from app.queue.worker import DefaultEmbedBuilder, DiscordDeliveryWorker, OutgoingNotification, WebhookTarget
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
 
 
@@ -116,3 +116,21 @@ async def test_worker_records_discord_rate_limit_for_retry(delivery_setup: tuple
         assert item is not None
         assert item.status == QueueStatus.RETRY
         assert item.last_error == "Discord delivery failed (HTTP 429)"
+
+
+@pytest.mark.asyncio
+async def test_unavailable_cover_does_not_block_notification(delivery_setup: tuple[sessionmaker[Session], Event]) -> None:
+    """A source outage must not prevent a detected event from reaching Discord."""
+
+    class FailingCoverProvider:
+        async def get_cover(self, server_id: int, book_id: int):
+            assert (server_id, book_id) == (1, 2)
+            raise RuntimeError("private source details")
+
+    factory, _event = delivery_setup
+    sender = Sender()
+    worker = DiscordDeliveryWorker(factory, Resolver(), DefaultEmbedBuilder(factory), sender, cover_provider=FailingCoverProvider())
+    report = await worker.process_once(now=datetime(2026, 11, 26, tzinfo=UTC))
+    assert report.sent == 2
+    with factory() as session:
+        assert {item.status for item in session.scalars(select(NotificationQueueItem)).all()} == {QueueStatus.SENT}

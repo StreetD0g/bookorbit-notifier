@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.crypto import SecretCipher
 from app.database.models import Server
 from app.providers.events.bookorbit.client import BookOrbitClient
+from app.schemas.bookorbit import CoverImage
 
 type SessionFactory = Callable[[], Session]
 
@@ -38,3 +39,9 @@ class EncryptedBookOrbitClientFactory:
             yield client
         finally:
             await client.aclose()
+
+    async def get_cover(self, server_id: int, book_id: int) -> CoverImage | None:
+        """Fetch a cover through the same short-lived authenticated source client."""
+
+        async with self.connect(server_id) as client:
+            return await client.get_cover(book_id)

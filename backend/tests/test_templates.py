@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.base import Base
 from app.database.models import Book, Event, EventStatus, Library, NotificationTemplate, Server
-from app.queue.worker import DefaultEmbedBuilder, _embed_text_length, _template_values, render_embed
+from app.queue.worker import DefaultEmbedBuilder, _embed_text_length, _format_duration, _template_values, render_embed
 from app.templates.safe import render_template, validate_template_syntax
 
 
@@ -64,6 +64,13 @@ def test_default_embed_builder_uses_library_template(tmp_path: Path) -> None:
             {"name": "Isbn13", "value": "9780000000000", "inline": True},
         ],
     }
+    assert notification.cover_source == (1, 1)
+    with Session(engine) as session:
+        stored_template = session.get(NotificationTemplate, 1)
+        assert stored_template is not None
+        stored_template.show_cover = False
+        session.commit()
+    assert builder.build(event_id).cover_source is None
     engine.dispose()
 
 
@@ -110,3 +117,27 @@ def test_bookorbit_detail_and_card_variables_handle_narrators_and_missing_audio(
     values = _template_values(book, "Books", "Server")
     assert values["narrators"] == ["Card narrator"]
     assert values["formats"] == []
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (0, "00"),
+        (59, "00"),
+        (60, "01"),
+        (3599, "59"),
+        (3600, "01:00"),
+        (3660, "01:01"),
+        (360000, "100:00"),
+        (None, None),
+        (-1, None),
+        (True, None),
+        (float("inf"), None),
+    ],
+)
+def test_duration_display_preserves_seconds_separately(seconds: object, expected: str | None) -> None:
+    book = Book(title="Example", authors_json=[], metadata_json={"audioMetadata": {"durationSeconds": seconds}})
+    values = _template_values(book, "Books", "Server")
+    assert _format_duration(seconds) == expected
+    assert values["duration"] == expected
+    assert values["duration_seconds"] == seconds

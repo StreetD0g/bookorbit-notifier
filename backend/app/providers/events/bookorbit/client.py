@@ -122,14 +122,15 @@ class BookOrbitClient:
             raise
 
         content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
-        if not content_type.startswith("image/"):
-            raise BookOrbitApiError("cover download returned a non-image response")
+        extensions = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+        if content_type not in extensions:
+            raise BookOrbitApiError("cover download returned an unsupported image type")
         content = response.content
         if not content:
             raise BookOrbitApiError("cover download returned an empty image")
         if len(content) > 20 * 1024 * 1024:
             raise BookOrbitApiError("cover download exceeded the 20 MiB safety limit")
-        extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}.get(content_type, "img")
+        extension = extensions[content_type]
         return CoverImage(content=content, content_type=content_type, filename=f"cover-{book_id}.{extension}")
 
     async def _request(self, method: str, path: str, *, operation: str, **kwargs: Any) -> httpx.Response:

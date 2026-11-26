@@ -13,6 +13,7 @@ from app.providers.notifications.discord.client import DiscordDeliveryError
 from app.queue.state import claim_due_deliveries, mark_event_ready
 from app.queue.worker import DiscordDeliveryWorker, OutgoingNotification, WebhookTarget
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
+from app.schemas.bookorbit import CoverImage
 
 
 class Resolver:
@@ -165,6 +166,47 @@ async def test_split_batch_failure_does_not_undo_successful_subgroup(batch_setup
         now=started_at + timedelta(seconds=60)
     )
     assert report.sent == 1 and report.retried == 1
+    with factory() as session:
+        assert {item.status for item in session.scalars(select(NotificationQueueItem)).all()} == {QueueStatus.SENT, QueueStatus.RETRY}
+
+
+@pytest.mark.asyncio
+async def test_group_with_covers_sends_individually_without_refetching(batch_setup: tuple[sessionmaker[Session], datetime]) -> None:
+    """Each attachment remains with its book and a failed send leaves only that row retryable."""
+
+    factory, started_at = batch_setup
+
+    class CoverBuilder:
+        def build(self, event_id: int) -> OutgoingNotification:
+            return OutgoingNotification(embed={"title": str(event_id)}, cover_source=(1, event_id))
+
+    class Covers:
+        def __init__(self) -> None:
+            self.requests: list[tuple[int, int]] = []
+
+        async def get_cover(self, server_id: int, book_id: int) -> CoverImage:
+            self.requests.append((server_id, book_id))
+            return CoverImage(content=str(book_id).encode(), content_type="image/png", filename=f"{book_id}.png")
+
+    class IndividualSender(BatchSender):
+        def __init__(self) -> None:
+            super().__init__()
+            self.covers: list[bytes] = []
+
+        async def send(self, _target: WebhookTarget, notification: OutgoingNotification) -> tuple[str | None, int]:
+            assert notification.cover is not None
+            self.covers.append(notification.cover.content)
+            if len(self.covers) == 2:
+                raise DiscordDeliveryError(429)
+            return "first-message", 200
+
+    covers, sender = Covers(), IndividualSender()
+    report = await DiscordDeliveryWorker(factory, Resolver(), CoverBuilder(), sender, cover_provider=covers).process_once(
+        now=started_at + timedelta(seconds=60)
+    )
+    assert report.sent == 1 and report.retried == 1
+    assert len(covers.requests) == len(sender.covers) == 2
+    assert sender.batch_sizes == []
     with factory() as session:
         assert {item.status for item in session.scalars(select(NotificationQueueItem)).all()} == {QueueStatus.SENT, QueueStatus.RETRY}
 

@@ -36,6 +36,7 @@ class OutgoingNotification:
 
     embed: dict[str, Any]
     cover: CoverImage | None = None
+    cover_source: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +72,13 @@ class NotificationSender(Protocol):
 
     async def send_many(self, target: WebhookTarget, notifications: list[OutgoingNotification]) -> tuple[str | None, int]:
         """Send a single Discord message containing up to ten attachment-free embeds."""
+
+
+class CoverProvider(Protocol):
+    """Fetch an authenticated source cover without exposing source credentials."""
+
+    async def get_cover(self, server_id: int, book_id: int) -> CoverImage | None:
+        """Return a validated image or None when no cover exists."""
 
 
 class EncryptedWebhookTargetResolver:
@@ -117,14 +125,16 @@ class DefaultEmbedBuilder:
                     values,
                     metadata_fields=template.metadata_fields,
                 )
-                return OutgoingNotification(embed=embed)
+                cover_source = (book.server_id, book.bookorbit_book_id) if template.show_cover else None
+                return OutgoingNotification(embed=embed, cover_source=cover_source)
             description = authors or "New media detected in BookOrbit"
             return OutgoingNotification(
                 embed={
                     "title": book.title or "New in the library",
                     "description": description,
                     "footer": {"text": "BookOrbit Notifier"},
-                }
+                },
+                cover_source=(book.server_id, book.bookorbit_book_id),
             )
 
 
@@ -152,7 +162,7 @@ def _template_values(book: Book, library_name: str, server_name: str) -> dict[st
         "language": metadata.get("language"),
         "formats": [file.get("format") for file in files if isinstance(file, dict)],
         "narrators": narrators,
-        "duration": audio.get("durationSeconds"),
+        "duration": _format_duration(audio.get("durationSeconds")),
         "duration_seconds": audio.get("durationSeconds"),
         "audio_abridged": audio.get("abridged"),
         "description": metadata.get("description"),
@@ -175,6 +185,19 @@ def _template_values(book: Book, library_name: str, server_name: str) -> dict[st
         "book_url": "",
         "cover_url": "",
     }
+
+
+def _format_duration(value: object) -> str | None:
+    """Display whole minutes as HH:MM, or MM for durations under one hour."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return None
+    try:
+        minutes = int(value // 60)
+    except (ValueError, OverflowError):
+        return None
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours:02d}:{minutes:02d}" if hours else f"{minutes:02d}"
 
 
 def _names(value: object) -> list[str]:
@@ -282,6 +305,7 @@ class DiscordDeliveryWorker:
         notification_builder: NotificationBuilder,
         sender: NotificationSender | None = None,
         *,
+        cover_provider: CoverProvider | None = None,
         stale_after: timedelta = timedelta(minutes=5),
         max_attempts: int = 8,
     ) -> None:
@@ -293,6 +317,7 @@ class DiscordDeliveryWorker:
         self._target_resolver = target_resolver
         self._notification_builder = notification_builder
         self._sender = sender or DiscordNotificationSender()
+        self._cover_provider = cover_provider
         self._profiles = SenderProfileService(session_factory)
         self._stale_after = stale_after
         self._max_attempts = max_attempts
@@ -331,12 +356,12 @@ class DiscordDeliveryWorker:
             with session.begin():
                 return claim_due_deliveries(session, limit=limit, now=now)
 
-    async def _deliver_claim(self, claim: DeliveryClaim, now: datetime) -> str:
+    async def _deliver_claim(self, claim: DeliveryClaim, now: datetime, *, prepared: OutgoingNotification | None = None) -> str:
         """Send one target and reduce every failure to a redacted persistent state."""
 
         try:
             target = self._target_for_claim(claim)
-            notification = self._notification_builder.build(claim.event_id)
+            notification = prepared if prepared is not None else await self._with_cover(self._notification_builder.build(claim.event_id))
             message_id, _status_code = await self._sender.send(target, notification)
         except DiscordDeliveryError as error:
             self._record_failure(claim, _discord_error_summary(error), error.retry_after_seconds, now)
@@ -356,7 +381,7 @@ class DiscordDeliveryWorker:
 
         try:
             target = self._target_for_claim(claims[0])
-            notifications = [self._notification_builder.build(claim.event_id) for claim in claims]
+            notifications = [await self._with_cover(self._notification_builder.build(claim.event_id)) for claim in claims]
         except Exception as error:
             for claim in claims:
                 self._record_failure(claim, f"Delivery adapter failed ({type(error).__name__})", None, now)
@@ -365,7 +390,10 @@ class DiscordDeliveryWorker:
         # Split outside the shared error handler: one successful subgroup must
         # never be marked failed if a later subgroup cannot persist its result.
         if any(notification.cover is not None for notification in notifications):
-            return [await self._deliver_claim(claim, now) for claim in claims]
+            return [
+                await self._deliver_claim(claim, now, prepared=notification)
+                for claim, notification in zip(claims, notifications, strict=True)
+            ]
         if len(claims) > 1 and sum(_embed_text_length(notification.embed) for notification in notifications) > 6000:
             midpoint = len(claims) // 2
             return await self._deliver_batch(claims[:midpoint], now) + await self._deliver_batch(claims[midpoint:], now)
@@ -392,6 +420,18 @@ class DiscordDeliveryWorker:
         target = self._target_resolver.resolve(claim.webhook_id)
         username, avatar_url = self._profiles.resolve(claim.library_id, claim.webhook_id)
         return replace(target, username=username, avatar_url=avatar_url)
+
+    async def _with_cover(self, notification: OutgoingNotification) -> OutgoingNotification:
+        """A cover is optional: source failures must not prevent notification delivery."""
+
+        if self._cover_provider is None or notification.cover_source is None or notification.cover is not None:
+            return notification
+        try:
+            cover = await self._cover_provider.get_cover(*notification.cover_source)
+        except Exception:
+            # Source errors may contain private URLs; never persist their text.
+            return notification
+        return replace(notification, cover=cover)
 
     def _record_failure(self, claim: DeliveryClaim, summary: str, retry_after_seconds: float | None, now: datetime) -> None:
         """Persist a retry/final failure for exactly the claimed webhook row."""

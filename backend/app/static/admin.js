@@ -70,6 +70,8 @@ Object.assign(messages.de, {avatarPrivacy: "Profilbilder werden für die Vorscha
 Object.assign(messages.en, {avatarPrivacy: "Avatar images are loaded directly from their host in your browser. The host can see your IP address."});
 Object.assign(messages.de, {loadOriginal: "Originales Webhook-Profil von Discord laden", originalLoaded: "Originales Webhook-Profil geladen.", originalAvatarLoaded: "Originales Webhook-Profilbild", originalNoAvatar: "Für diesen Webhook ist kein individuelles Profilbild gespeichert."});
 Object.assign(messages.en, {loadOriginal: "Load original webhook profile from Discord", originalLoaded: "Original webhook profile loaded.", originalAvatarLoaded: "Original webhook avatar", originalNoAvatar: "This webhook has no custom avatar."});
+Object.assign(messages.de, {showCover: "Cover in Benachrichtigungen anzeigen", coverPreviewHint: "Die Beispielvorschau und ihre Testnachricht enthalten kein echtes BookOrbit-Cover."});
+Object.assign(messages.en, {showCover: "Show covers in notifications", coverPreviewHint: "The sample preview and its test message do not contain a real BookOrbit cover."});
 messages.de.previewOriginal = "Originaler Webhook-Name (nicht abgerufen)";
 messages.en.previewOriginal = "Original webhook name (not retrieved)";
 let counts = null;
@@ -546,6 +548,7 @@ function populateTemplateSelector() {
 document.querySelector("#template-select").addEventListener("change", event => {
   const template = templates.find(item => String(item.id) === event.target.value);
   document.querySelector("#template-name").value = template?.name || "";
+  document.querySelector("#template-show-cover").checked = template?.show_cover ?? true;
   if (template) {
     document.querySelector("#preview-title").value = template.title_template;
     document.querySelector("#preview-description").value = template.description_template;
@@ -557,7 +560,7 @@ document.querySelector("#template-select").addEventListener("change", event => {
 });
 document.querySelector("#save-template").addEventListener("click", async () => {
   const selected = templates.find(item => String(item.id) === document.querySelector("#template-select").value);
-  const payload = {name: document.querySelector("#template-name").value, title_template: document.querySelector("#preview-title").value, description_template: document.querySelector("#preview-description").value, footer_template: document.querySelector("#preview-footer").value || null, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), show_cover: selected?.show_cover ?? true, metadata_fields: [...selectedMetadata]};
+  const payload = {name: document.querySelector("#template-name").value, title_template: document.querySelector("#preview-title").value, description_template: document.querySelector("#preview-description").value, footer_template: document.querySelector("#preview-footer").value || null, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), show_cover: document.querySelector("#template-show-cover").checked, metadata_fields: [...selectedMetadata]};
   try {
     const result = await call(selected ? "/templates/" + selected.id : "/templates", {...mutationOptions(payload), method: selected ? "PUT" : "POST"});
     await refresh();

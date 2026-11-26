@@ -56,6 +56,20 @@ async def test_missing_cover_is_not_an_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cover_rejects_unsupported_image_type() -> None:
+    client = BookOrbitClient(
+        "https://books.example",
+        "bok_test",
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, content=b"<svg/>", headers={"content-type": "image/svg+xml"})),
+    )
+    try:
+        with pytest.raises(BookOrbitApiError, match="unsupported image type"):
+            await client.get_cover(99)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_source_errors_do_not_keep_response_body() -> None:
     """Operational errors contain status context only, not potentially sensitive bodies."""
 
