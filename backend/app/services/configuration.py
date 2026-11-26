@@ -342,6 +342,8 @@ def _validate_template(command: CreateTemplate) -> str:
         raise ValueError("Embed color must be a 24-bit RGB integer")
     if any(field not in ALLOWED_TEMPLATE_VARIABLES for field in command.metadata_fields):
         raise ValueError("Metadata field contains an unsupported template variable")
+    if len(command.metadata_fields) > 25 or len(set(command.metadata_fields)) != len(command.metadata_fields):
+        raise ValueError("Metadata fields must contain at most 25 distinct variables")
     return name
 
 

@@ -81,6 +81,8 @@ def test_configuration_rejects_unsafe_urls_and_executable_template_syntax(
         service.create_webhook(CreateWebhook(name="Unsafe", webhook_url="https://example.com/api/webhooks/123/token"))
     with pytest.raises(ValueError, match="unsupported template syntax"):
         service.create_template(CreateTemplate(name="Unsafe", title_template="{% import os %}"))
+    with pytest.raises(ValueError, match="distinct"):
+        service.create_template(CreateTemplate(name="Duplicates", metadata_fields=("isbn13", "isbn13")))
 
 
 def test_library_delivery_configuration_validates_schedule_inputs(

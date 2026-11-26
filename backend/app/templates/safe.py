@@ -40,7 +40,7 @@ ALLOWED_TEMPLATE_VARIABLES = {
     "book_url",
     "cover_url",
 }
-_VARIABLE_PATTERN = re.compile(r"{{\s*([a-z_]+)\s*}}")
+_VARIABLE_PATTERN = re.compile(r"{{\s*([a-z_][a-z_0-9]*)\s*}}")
 
 
 def validate_template_syntax(template: str, label: str) -> None:

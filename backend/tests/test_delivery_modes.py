@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.database.base import Base
 from app.database.models import DeliveryMode, Event, Library, NotificationQueueItem, QueueStatus, Server, Webhook
+from app.providers.notifications.discord.client import DiscordDeliveryError
 from app.queue.state import claim_due_deliveries, mark_event_ready
 from app.queue.worker import DiscordDeliveryWorker, OutgoingNotification, WebhookTarget
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
@@ -125,6 +126,47 @@ async def test_batch_mode_reuses_collection_deadline_and_sends_one_grouped_messa
         items = session.scalars(select(NotificationQueueItem).order_by(NotificationQueueItem.id)).all()
         assert {item.status for item in items} == {QueueStatus.SENT}
         assert {item.discord_message_id for item in items} == {"batch-message"}
+
+
+@pytest.mark.asyncio
+async def test_batch_splits_when_discord_combined_embed_limit_would_be_exceeded(
+    batch_setup: tuple[sessionmaker[Session], datetime],
+) -> None:
+    """Two individually valid long embeds must be sent in separate Discord messages."""
+
+    factory, started_at = batch_setup
+
+    class LargeBuilder:
+        def build(self, _event_id: int) -> OutgoingNotification:
+            return OutgoingNotification(embed={"title": "Book", "description": "x" * 3500})
+
+    sender = BatchSender()
+    report = await DiscordDeliveryWorker(factory, Resolver(), LargeBuilder(), sender).process_once(now=started_at + timedelta(seconds=60))
+    assert report.sent == 2 and sender.batch_sizes == [1, 1]
+    with factory() as session:
+        assert {item.status for item in session.scalars(select(NotificationQueueItem)).all()} == {QueueStatus.SENT}
+
+
+@pytest.mark.asyncio
+async def test_split_batch_failure_does_not_undo_successful_subgroup(batch_setup: tuple[sessionmaker[Session], datetime]) -> None:
+    factory, started_at = batch_setup
+
+    class LargeBuilder:
+        def build(self, _event_id: int) -> OutgoingNotification:
+            return OutgoingNotification(embed={"description": "x" * 3500})
+
+    class PartialSender(BatchSender):
+        async def send_many(self, target: WebhookTarget, notifications: list[OutgoingNotification]) -> tuple[str | None, int]:
+            if self.batch_sizes:
+                raise DiscordDeliveryError(429, retry_after_seconds=30)
+            return await super().send_many(target, notifications)
+
+    report = await DiscordDeliveryWorker(factory, Resolver(), LargeBuilder(), PartialSender()).process_once(
+        now=started_at + timedelta(seconds=60)
+    )
+    assert report.sent == 1 and report.retried == 1
+    with factory() as session:
+        assert {item.status for item in session.scalars(select(NotificationQueueItem)).all()} == {QueueStatus.SENT, QueueStatus.RETRY}
 
 
 def test_daily_summary_uses_the_next_configured_local_time(tmp_path: Path) -> None:

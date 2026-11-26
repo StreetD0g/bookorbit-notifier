@@ -242,6 +242,14 @@ def test_preview_renders_verified_variables_and_requires_csrf(client) -> None:
     assert result.status_code == 200
     assert result.json()["title"] == "The Example Book (2024)"
     assert result.json()["description"] == "Sam Example / 320 / 28800"
+    styled = {**payload, "color": 0x123456, "metadata_fields": ["narrators", "isbn13", "page_count"]}
+    rendered = http.post("/api/v1/admin/template-preview", headers=headers, json=styled)
+    assert rendered.status_code == 200 and rendered.json()["color"] == 0x123456
+    assert [field["name"] for field in rendered.json()["fields"]] == ["Narrators", "Isbn13", "Page Count"]
+    assert (
+        http.post("/api/v1/admin/template-preview", headers=headers, json={**styled, "metadata_fields": ["isbn13", "isbn13"]}).status_code
+        == 400
+    )
     assert (
         http.post("/api/v1/admin/template-preview", headers=headers, json={"title": "{{not_allowed}}", "description": ""}).status_code
         == 400
@@ -343,13 +351,14 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
         "username": {"choice": "custom", "value": "Draft Bot"},
         "avatar_url": {"choice": "original"},
     }
-    preview = {"title": "{{title}} ({{published_year}})", "description": "{{narrators}}"}
+    preview = {"title": "{{title}} ({{published_year}})", "description": "{{narrators}}", "color": 0x123456, "metadata_fields": ["isbn13"]}
     assert (
         http.post(test_path, headers=headers, json={"library_id": library["id"], "preview": preview, "sender_profile": draft}).status_code
         == 200
     )
     assert captured[1][0] == "Draft Bot" and captured[1][2]["title"] == "The Example Book (2024)"
     assert captured[1][2]["description"] == "Sam Example"
+    assert captured[1][2]["fields"][0]["name"] == "Isbn13" and captured[1][2]["color"] == 0x123456
     assert captured[1][2]["footer"]["text"] == "TEST"
     assert http.get(f"/api/v1/admin/sender-profiles/library?scope_id={library['id']}").json()["username"]["value"] == "Library Bot"
     mismatched = {**draft, "webhook_id": webhook_id + 1}
@@ -360,8 +369,9 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
         ).status_code
         == 400
     )
-    assert http.post(test_path, headers=headers, json={"preview": {"title": "a" * 257, "description": ""}}).status_code == 400
-    assert len(captured) == 2
+    assert http.post(test_path, headers=headers, json={"preview": {"title": "a" * 257, "description": ""}}).status_code == 200
+    assert len(captured[2][2]["title"]) == 256 and captured[2][2]["title"].endswith("…")
+    assert len(captured) == 3
 
     async def fake_failure(_self, _target, _notification):
         raise DiscordDeliveryError(429)
@@ -399,8 +409,10 @@ def test_template_create_update_and_validation(client, monkeypatch: pytest.Monke
     assert http.put(f"/api/v1/admin/templates/{template_id}", headers=headers, json=payload).status_code == 400
     assert http.get("/api/v1/admin/templates").json()[0]["title_template"] == "{{title}}"
     payload["title_template"] = "New: {{title}}"
+    payload["metadata_fields"] = ["isbn13", "narrators"]
     assert http.put(f"/api/v1/admin/templates/{template_id}", headers=headers, json=payload).status_code == 200
     assert http.get("/api/v1/admin/templates").json()[0]["title_template"] == "New: {{title}}"
+    assert http.get("/api/v1/admin/templates").json()[0]["metadata_fields"] == ["isbn13", "narrators"]
 
 
 def test_manual_scan_requires_csrf_and_reports_failure_without_secrets(client, monkeypatch: pytest.MonkeyPatch) -> None:

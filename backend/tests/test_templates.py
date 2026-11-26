@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.base import Base
 from app.database.models import Book, Event, EventStatus, Library, NotificationTemplate, Server
-from app.queue.worker import DefaultEmbedBuilder, _template_values
+from app.queue.worker import DefaultEmbedBuilder, _embed_text_length, _template_values, render_embed
 from app.templates.safe import render_template, validate_template_syntax
 
 
@@ -15,6 +15,9 @@ def test_safe_template_renderer_interpolates_only_documented_values() -> None:
 
     assert render_template("{{title}} — {{authors}}", {"title": "Book", "authors": ["A", "B"]}) == "Book — A, B"
     assert render_template("{{subtitle}}", {}) == ""
+    assert render_template("{{isbn10}} / {{isbn13}}", {"isbn10": "123", "isbn13": "456"}) == "123 / 456"
+    with pytest.raises(ValueError, match="unsupported template variable"):
+        validate_template_syntax("{{isbn42}}", "Template")
     with pytest.raises(ValueError, match="unsupported template syntax"):
         validate_template_syntax("{% import os %}", "Template")
 
@@ -32,9 +35,17 @@ def test_default_embed_builder_uses_library_template(tmp_path: Path) -> None:
             description_template="{{authors}} in {{library}}",
             footer_template="{{server}}",
             color=0x112233,
+            metadata_fields=["published_year", "isbn13"],
         )
         library = Library(server=server, bookorbit_library_id=1, name="Books", template=template)
-        book = Book(server=server, library=library, bookorbit_book_id=1, title="Arrival", authors_json=["Author"], metadata_json={})
+        book = Book(
+            server=server,
+            library=library,
+            bookorbit_book_id=1,
+            title="Arrival",
+            authors_json=["Author"],
+            metadata_json={"publishedYear": 2024, "isbn13": "9780000000000"},
+        )
         event = Event(server_id=1, library_id=1, book=book, event_type="BOOK_ADDED", status=EventStatus.READY)
         session.add_all([server, template, library, book, event])
         session.commit()
@@ -48,8 +59,26 @@ def test_default_embed_builder_uses_library_template(tmp_path: Path) -> None:
         "description": "Author in Books",
         "color": 0x112233,
         "footer": {"text": "Source"},
+        "fields": [
+            {"name": "Published Year", "value": "2024", "inline": True},
+            {"name": "Isbn13", "value": "9780000000000", "inline": True},
+        ],
     }
     engine.dispose()
+
+
+def test_metadata_fields_preserve_order_omit_missing_and_respect_embed_limits() -> None:
+    values = {"published_year": 2024, "narrators": ["Narrator"], "page_count": None, "description": "x" * 2000}
+    embed = render_embed(
+        "T" * 300, "D" * 5000, "F" * 3000, 42, values, metadata_fields=["narrators", "page_count", "published_year", "description"]
+    )
+    assert len(embed["title"]) == 256 and embed["title"].endswith("…")
+    assert len(embed["description"]) == 4096
+    assert _embed_text_length(embed) <= 6000
+    # The long core text consumes the available budget; no partial over-limit field is added.
+    assert all(len(field["value"]) <= 1024 for field in embed.get("fields", []))
+    normal = render_embed("Title", "Description", None, 42, values, metadata_fields=["narrators", "page_count", "published_year"])
+    assert [(field["name"], field["value"]) for field in normal["fields"]] == [("Narrators", "Narrator"), ("Published Year", "2024")]
 
 
 def test_bookorbit_detail_and_card_variables_handle_narrators_and_missing_audio() -> None:

@@ -110,7 +110,12 @@ class DefaultEmbedBuilder:
             if template is not None:
                 values = _template_values(book, library.name, book.server.name)
                 embed = render_embed(
-                    template.title_template, template.description_template, template.footer_template, template.color, values
+                    template.title_template,
+                    template.description_template,
+                    template.footer_template,
+                    template.color,
+                    values,
+                    metadata_fields=template.metadata_fields,
                 )
                 return OutgoingNotification(embed=embed)
             description = authors or "New media detected in BookOrbit"
@@ -185,13 +190,58 @@ def _names(value: object) -> list[str]:
     return names
 
 
-def render_embed(title: str, description: str, footer: str | None, color: int, values: dict[str, object]) -> dict[str, Any]:
+def render_embed(
+    title: str, description: str, footer: str | None, color: int, values: dict[str, object], *, metadata_fields: list[str] | None = None
+) -> dict[str, Any]:
     """Use the same strict interpolation for Discord delivery and administrator preview."""
 
-    embed: dict[str, Any] = {"title": render_template(title, values), "description": render_template(description, values), "color": color}
+    embed: dict[str, Any] = {
+        "title": _clip(render_template(title, values), 256),
+        "description": _clip(render_template(description, values), 4096),
+        "color": color,
+    }
     if footer:
-        embed["footer"] = {"text": render_template(footer, values)}
+        footer_budget = min(2048, 6000 - len(embed["title"]) - len(embed["description"]))
+        embed["footer"] = {"text": _clip(render_template(footer, values), footer_budget)}
+    if metadata_fields:
+        fields = []
+        remaining = max(0, 6000 - _embed_text_length(embed))
+        for variable in metadata_fields[:25]:
+            value = render_template("{{" + variable + "}}", values)
+            if not value:
+                continue
+            label = variable.replace("_", " ").title()
+            available = min(1024, remaining - len(label))
+            if available < 1:
+                break
+            shown = _clip(value, available)
+            fields.append({"name": label, "value": shown, "inline": True})
+            remaining -= len(label) + len(shown)
+        if fields:
+            embed["fields"] = fields
     return embed
+
+
+def _clip(value: str, limit: int) -> str:
+    """Keep Discord payloads within a limit while visibly marking truncated content."""
+
+    if len(value) <= limit:
+        return value
+    return value[: max(0, limit - 1)] + "…"
+
+
+def _embed_text_length(embed: dict[str, Any]) -> int:
+    """Count Discord's textual embed fields for the 6000-character message limit."""
+
+    total = sum(len(embed.get(key) or "") for key in ("title", "description"))
+    for key, child in (("footer", "text"), ("author", "name")):
+        nested = embed.get(key)
+        if isinstance(nested, dict):
+            total += len(nested.get(child) or "")
+    for item in embed.get("fields", []):
+        if isinstance(item, dict):
+            total += len(item.get("name") or "") + len(item.get("value") or "")
+    return total
 
 
 class DiscordNotificationSender:
@@ -307,8 +357,20 @@ class DiscordDeliveryWorker:
         try:
             target = self._target_for_claim(claims[0])
             notifications = [self._notification_builder.build(claim.event_id) for claim in claims]
-            if any(notification.cover is not None for notification in notifications):
-                return [await self._deliver_claim(claim, now) for claim in claims]
+        except Exception as error:
+            for claim in claims:
+                self._record_failure(claim, f"Delivery adapter failed ({type(error).__name__})", None, now)
+            return ["failed" if claim.attempt_count >= self._max_attempts else "retry" for claim in claims]
+
+        # Split outside the shared error handler: one successful subgroup must
+        # never be marked failed if a later subgroup cannot persist its result.
+        if any(notification.cover is not None for notification in notifications):
+            return [await self._deliver_claim(claim, now) for claim in claims]
+        if len(claims) > 1 and sum(_embed_text_length(notification.embed) for notification in notifications) > 6000:
+            midpoint = len(claims) // 2
+            return await self._deliver_batch(claims[:midpoint], now) + await self._deliver_batch(claims[midpoint:], now)
+
+        try:
             message_id, _status_code = await self._sender.send_many(target, notifications)
         except DiscordDeliveryError as error:
             for claim in claims:

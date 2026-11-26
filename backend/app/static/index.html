@@ -151,14 +151,18 @@
 {{narrators}} · {{page_count}} Seiten</textarea>
         <label for="preview-footer" data-text="embedFooter">Fußzeile</label>
         <input id="preview-footer" type="text" maxlength="512" value="{{library}} · {{server}}">
+        <label for="preview-color" data-text="embedColor">Embed-Farbe</label><input id="preview-color" type="color" value="#2f855a">
         <label for="preview-variable" data-text="variable">Variable</label>
         <select id="preview-variable"></select>
         <button type="button" id="insert-variable" data-text="insertVariable">In Beschreibung einfügen</button>
+        <button type="button" id="add-metadata-field" data-text="addField">Als Metadatenfeld hinzufügen</button>
+        <p data-text="fieldHelp">Felder lassen sich ziehen oder mit den Schaltflächen verschieben; leere Werte werden ausgelassen.</p>
+        <ol id="metadata-fields"></ol>
         <button type="button" id="save-template" data-text="saveTemplate">Vorlage speichern</button>
         <button type="button" id="send-preview" data-text="sendPreview">Vorschau als Testnachricht senden</button>
         <div class="discord-preview" aria-live="polite">
           <div class="discord-avatar" aria-hidden="true"><span id="preview-avatar-fallback">B</span><img id="preview-avatar-image" alt="" referrerpolicy="no-referrer" hidden></div>
-          <div><strong id="preview-sender">BookOrbit Notifier</strong><p id="preview-avatar-status"></p><div class="discord-embed"><strong id="preview-rendered-title"></strong><p id="preview-rendered-description"></p><small id="preview-rendered-footer"></small></div></div>
+          <div><strong id="preview-sender">BookOrbit Notifier</strong><p id="preview-avatar-status"></p><div class="discord-embed"><strong id="preview-rendered-title"></strong><p id="preview-rendered-description"></p><dl id="preview-rendered-fields"></dl><small id="preview-rendered-footer"></small></div></div>
         </div>
         <p id="preview-error" role="status"></p>
       </section>

@@ -84,6 +84,8 @@ class PreviewInput(BaseModel):
     title: str = Field(max_length=512)
     description: str = Field(max_length=4000)
     footer: str | None = Field(default=None, max_length=512)
+    color: int = Field(default=0x2F855A, ge=0, le=0xFFFFFF)
+    metadata_fields: list[str] = Field(default_factory=list, max_length=25)
 
 
 class ProfileScopeItem(BaseModel):
@@ -768,7 +770,12 @@ async def test_webhook(
             len(embed["title"]) > 256
             or len(embed["description"]) > 4096
             or len(footer) > 2040  # Reserve room for the test marker below.
-            or len(embed["title"]) + len(embed["description"]) + len(footer) + 7 > 6000
+            or len(embed["title"])
+            + len(embed["description"])
+            + len(footer)
+            + sum(len(field["name"]) + len(field["value"]) for field in embed.get("fields", []))
+            + 7
+            > 6000
             or not (embed["title"] or embed["description"] or footer)
         ):
             raise ValueError("Invalid test embed")
@@ -969,7 +976,16 @@ def _render_sample(payload: PreviewInput) -> dict:
             "collections": [{"name": "Favorites"}],
         },
     )
-    return render_embed(payload.title, payload.description, payload.footer, 0x2F855A, _template_values(book, "Books", "Example server"))
+    if len(set(payload.metadata_fields)) != len(payload.metadata_fields):
+        raise ValueError("Metadata fields must be distinct")
+    return render_embed(
+        payload.title,
+        payload.description,
+        payload.footer,
+        payload.color,
+        _template_values(book, "Books", "Example server"),
+        metadata_fields=payload.metadata_fields,
+    )
 
 
 @router.put("/sender-profiles/{scope}")

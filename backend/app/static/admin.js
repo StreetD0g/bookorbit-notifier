@@ -60,6 +60,8 @@ Object.assign(messages.de, {previewWebhook: "Webhook für Profilvorschau", previ
 Object.assign(messages.en, {previewWebhook: "Webhook for profile preview", previewLibrary: "Library for profile preview", noContext: "No selection", previewAvatarCustom: "Avatar URL configured (image preview not yet available)", previewAvatarOriginal: "Original webhook avatar (not retrieved)", previewProfileInvalid: "Invalid sender profile"});
 Object.assign(messages.de, {sendPreview: "Vorschau als Testnachricht senden", chooseWebhook: "Bitte wähle einen Webhook für die Vorschau.", confirmPreview: "Diese Vorschau mit Beispieldaten tatsächlich an den ausgewählten Discord-Webhook senden?"});
 Object.assign(messages.en, {sendPreview: "Send preview as test message", chooseWebhook: "Please select a webhook for the preview.", confirmPreview: "Send this preview with sample data to the selected Discord webhook?"});
+Object.assign(messages.de, {embedColor: "Embed-Farbe", addField: "Als Metadatenfeld hinzufügen", fieldHelp: "Felder lassen sich ziehen oder mit den Schaltflächen verschieben; leere Werte werden ausgelassen.", moveUp: "Nach oben", moveDown: "Nach unten", removeField: "Entfernen", fieldLimit: "Ein Feld darf nur einmal und höchstens 25 Felder dürfen ausgewählt werden."});
+Object.assign(messages.en, {embedColor: "Embed color", addField: "Add as metadata field", fieldHelp: "Drag fields or use the buttons to reorder them; empty values are omitted.", moveUp: "Move up", moveDown: "Move down", removeField: "Remove", fieldLimit: "Each field can only be selected once, with at most 25 fields."});
 messages.de.previewAvatarCustom = "Benutzerdefiniertes Profilbild";
 messages.en.previewAvatarCustom = "Custom avatar";
 Object.assign(messages.de, {previewAvatarFailed: "Profilbild konnte im Browser nicht geladen werden."});
@@ -73,6 +75,7 @@ let overview = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
 let previewRequest = 0, previewTimer;
+let selectedMetadata = [], draggedField = null;
 let senderPreviewRequest = 0, senderPreviewTimer;
 let servers = [], webhooks = [], libraries = [];
 let deliveries = [];
@@ -90,6 +93,7 @@ function translate() {
   renderManagement();
   renderDeliveries();
   populateTemplateSelector();
+  renderMetadataFields();
   populateArrivalFilters();
   renderArrivals();
   updatePreviewSender();
@@ -179,15 +183,44 @@ async function renderPreview() {
   const request = ++previewRequest;
   const error = document.querySelector("#preview-error");
   try {
-    const data = await call("/template-preview", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify({title: document.querySelector("#preview-title").value, description: document.querySelector("#preview-description").value, footer: document.querySelector("#preview-footer").value})});
+    const data = await call("/template-preview", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify(previewDraft())});
     if (request !== previewRequest) return;
     document.querySelector("#preview-rendered-title").textContent = data.title;
     document.querySelector("#preview-rendered-description").textContent = data.description;
     document.querySelector("#preview-rendered-footer").textContent = data.footer?.text || "";
+    document.querySelector(".discord-embed").style.borderLeftColor = "#" + data.color.toString(16).padStart(6, "0");
+    const fields = document.querySelector("#preview-rendered-fields"); fields.replaceChildren();
+    for (const field of data.fields || []) { const term = document.createElement("dt"), value = document.createElement("dd"); term.textContent = field.name; value.textContent = field.value; fields.append(term, value); }
     error.textContent = "";
   } catch { if (request === previewRequest) error.textContent = strings().previewInvalid; }
 }
 function queuePreview() { clearTimeout(previewTimer); ++previewRequest; previewTimer = setTimeout(renderPreview, 250); }
+function previewDraft() {
+  return {title: document.querySelector("#preview-title").value, description: document.querySelector("#preview-description").value,
+    footer: document.querySelector("#preview-footer").value, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), metadata_fields: [...selectedMetadata]};
+}
+function renderMetadataFields() {
+  const list = document.querySelector("#metadata-fields"); list.replaceChildren();
+  selectedMetadata.forEach((name, index) => {
+    const item = document.createElement("li"), label = document.createElement("span"); item.draggable = true; label.textContent = "{{" + name + "}}"; item.append(label);
+    const move = (destination) => { if (destination < 0 || destination >= selectedMetadata.length) return; const [value] = selectedMetadata.splice(index, 1); selectedMetadata.splice(destination, 0, value); renderMetadataFields(); queuePreview(); };
+    for (const [caption, delta] of [[strings().moveUp, -1], [strings().moveDown, 1]]) {
+      const button = document.createElement("button"); button.type = "button"; button.textContent = caption; button.setAttribute("aria-label", caption + " " + name);
+      button.disabled = index + delta < 0 || index + delta >= selectedMetadata.length; button.addEventListener("click", () => move(index + delta)); item.append(button);
+    }
+    const remove = document.createElement("button"); remove.type = "button"; remove.textContent = strings().removeField; remove.setAttribute("aria-label", strings().removeField + " " + name);
+    remove.addEventListener("click", () => { selectedMetadata.splice(index, 1); renderMetadataFields(); queuePreview(); }); item.append(remove);
+    item.addEventListener("dragstart", () => { draggedField = index; });
+    item.addEventListener("dragover", event => event.preventDefault());
+    item.addEventListener("drop", event => { event.preventDefault(); if (draggedField === null || draggedField === index) return; const [value] = selectedMetadata.splice(draggedField, 1); selectedMetadata.splice(index, 0, value); draggedField = null; renderMetadataFields(); queuePreview(); });
+    item.addEventListener("dragend", () => { draggedField = null; }); list.append(item);
+  });
+}
+document.querySelector("#add-metadata-field").addEventListener("click", () => {
+  const value = document.querySelector("#preview-variable").value;
+  if (!value || selectedMetadata.includes(value) || selectedMetadata.length >= 25) { message.textContent = strings().fieldLimit; return; }
+  selectedMetadata.push(value); renderMetadataFields(); queuePreview();
+});
 async function selectScope() {
   const scope = document.querySelector("#profile-scope").value;
   const target = document.querySelector("#profile-target");
@@ -502,12 +535,14 @@ document.querySelector("#template-select").addEventListener("change", event => {
     document.querySelector("#preview-title").value = template.title_template;
     document.querySelector("#preview-description").value = template.description_template;
     document.querySelector("#preview-footer").value = template.footer_template || "";
+    document.querySelector("#preview-color").value = "#" + template.color.toString(16).padStart(6, "0");
+    selectedMetadata = [...template.metadata_fields]; renderMetadataFields();
     queuePreview();
-  }
+  } else { selectedMetadata = []; renderMetadataFields(); document.querySelector("#preview-color").value = "#2f855a"; queuePreview(); }
 });
 document.querySelector("#save-template").addEventListener("click", async () => {
   const selected = templates.find(item => String(item.id) === document.querySelector("#template-select").value);
-  const payload = {name: document.querySelector("#template-name").value, title_template: document.querySelector("#preview-title").value, description_template: document.querySelector("#preview-description").value, footer_template: document.querySelector("#preview-footer").value || null, color: selected?.color ?? 0x2f855a, show_cover: selected?.show_cover ?? true, metadata_fields: selected?.metadata_fields ?? []};
+  const payload = {name: document.querySelector("#template-name").value, title_template: document.querySelector("#preview-title").value, description_template: document.querySelector("#preview-description").value, footer_template: document.querySelector("#preview-footer").value || null, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), show_cover: selected?.show_cover ?? true, metadata_fields: [...selectedMetadata]};
   try {
     const result = await call(selected ? "/templates/" + selected.id : "/templates", {...mutationOptions(payload), method: selected ? "PUT" : "POST"});
     await refresh();
@@ -520,7 +555,7 @@ document.querySelector("#send-preview").addEventListener("click", async event =>
   if (!draft?.webhook_id) { message.textContent = strings().chooseWebhook; return; }
   if (!window.confirm(strings().confirmPreview)) return;
   const button = event.currentTarget; button.disabled = true;
-  const preview = {title: document.querySelector("#preview-title").value, description: document.querySelector("#preview-description").value, footer: document.querySelector("#preview-footer").value};
+  const preview = previewDraft();
   try {
     await call("/webhooks/" + draft.webhook_id + "/test", {...mutationOptions({library_id: draft.library_id, preview, sender_profile: draft}), method: "POST"});
     message.textContent = strings().testSent;
@@ -529,7 +564,7 @@ document.querySelector("#send-preview").addEventListener("click", async event =>
 language.addEventListener("change", translate);
 document.querySelector("#profile-scope").addEventListener("change", () => selectScope().catch(() => { message.textContent = strings().failed; }));
 document.querySelector("#profile-target").addEventListener("change", () => { populatePreviewContexts(); loadProfile().catch(() => { message.textContent = strings().failed; }); });
-for (const selector of ["#preview-title", "#preview-description", "#preview-footer"]) document.querySelector(selector).addEventListener("input", queuePreview);
+for (const selector of ["#preview-title", "#preview-description", "#preview-footer", "#preview-color"]) document.querySelector(selector).addEventListener("input", queuePreview);
 for (const selector of ["#username-choice", "#username-value", "#avatar-choice", "#avatar-value", "#preview-webhook", "#preview-library"]) document.querySelector(selector).addEventListener("input", updatePreviewSender);
 document.querySelector("#insert-variable").addEventListener("click", () => {
   const input = document.querySelector("#preview-description");
