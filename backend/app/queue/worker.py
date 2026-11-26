@@ -10,10 +10,11 @@ from typing import Any, Protocol
 from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher
-from app.database.models import Event, Webhook
+from app.database.models import Book, Event, Webhook
 from app.providers.notifications.discord.client import DiscordDeliveryError, DiscordWebhookClient
 from app.queue.state import DeliveryClaim, claim_due_deliveries, record_delivery_failure, record_delivery_success, recover_stale_sends
 from app.schemas.bookorbit import CoverImage
+from app.templates.safe import render_template
 
 type SessionFactory = Callable[[], Session]
 
@@ -90,14 +91,26 @@ class DefaultEmbedBuilder:
         self._session_factory = session_factory
 
     def build(self, event_id: int) -> OutgoingNotification:
-        """Render persisted title/authors only; no invented metadata or source secrets."""
+        """Render a library template when configured, otherwise use the safe fallback embed."""
 
         with self._session_factory() as session:
             event = session.get(Event, event_id)
             if event is None:
                 raise ValueError("Event does not exist")
             book = event.book
+            library = book.library
             authors = ", ".join(book.authors_json)
+            template = library.template if library.template and library.template.enabled else None
+            if template is not None:
+                values = _template_values(book, library.name, book.server.name)
+                embed: dict[str, Any] = {
+                    "title": render_template(template.title_template, values),
+                    "description": render_template(template.description_template, values),
+                    "color": template.color,
+                }
+                if template.footer_template:
+                    embed["footer"] = {"text": render_template(template.footer_template, values)}
+                return OutgoingNotification(embed=embed)
             description = authors or "New media detected in BookOrbit"
             return OutgoingNotification(
                 embed={
@@ -106,6 +119,36 @@ class DefaultEmbedBuilder:
                     "footer": {"text": "BookOrbit Notifier"},
                 }
             )
+
+
+def _template_values(book: Book, library_name: str, server_name: str) -> dict[str, object]:
+    """Map stored BookOrbit metadata into documented template variables only."""
+
+    metadata = book.metadata_json
+    return {
+        "title": book.title,
+        "subtitle": metadata.get("subtitle"),
+        "authors": book.authors_json,
+        "series": metadata.get("seriesName"),
+        "series_index": metadata.get("seriesIndex"),
+        "library": library_name,
+        "server": server_name,
+        "genres": metadata.get("genres"),
+        "language": metadata.get("language"),
+        "formats": [file.get("format") for file in metadata.get("files", []) if isinstance(file, dict)],
+        "narrators": metadata.get("audioMetadata", {}).get("narrators") if isinstance(metadata.get("audioMetadata"), dict) else None,
+        "duration": metadata.get("audioMetadata", {}).get("durationSeconds") if isinstance(metadata.get("audioMetadata"), dict) else None,
+        "description": metadata.get("description"),
+        "isbn": metadata.get("isbn13"),
+        "publisher": metadata.get("publisher"),
+        "published_date": metadata.get("publishedDate"),
+        "page_count": metadata.get("pageCount"),
+        "age_rating": metadata.get("ageRating"),
+        "content_warnings": metadata.get("contentWarnings"),
+        "date_added": book.source_added_at,
+        "book_url": "",
+        "cover_url": "",
+    }
 
 
 class DiscordNotificationSender:

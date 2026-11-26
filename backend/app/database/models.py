@@ -92,6 +92,7 @@ class Library(Base):
     bookorbit_library_id: Mapped[int] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(String(255))
     monitored: Mapped[bool] = mapped_column(Boolean, default=False)
+    template_id: Mapped[int | None] = mapped_column(ForeignKey("notification_templates.id", ondelete="SET NULL"), nullable=True, index=True)
     metadata_delay_seconds: Mapped[int] = mapped_column(Integer, default=120, server_default="120")
     metadata_max_wait_seconds: Mapped[int] = mapped_column(Integer, default=1800, server_default="1800")
     baseline_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -101,6 +102,27 @@ class Library(Base):
     server: Mapped[Server] = relationship(back_populates="libraries")
     books: Mapped[list[Book]] = relationship(back_populates="library")
     webhooks: Mapped[list[Webhook]] = relationship(secondary="library_webhooks", back_populates="libraries")
+    template: Mapped[NotificationTemplate | None] = relationship(back_populates="libraries")
+
+
+class NotificationTemplate(Base):
+    """Safe declarative layout configuration; template code is never stored or executed."""
+
+    __tablename__ = "notification_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    title_template: Mapped[str] = mapped_column(String(512), default="{{title}}")
+    description_template: Mapped[str] = mapped_column(Text, default="{{authors}}")
+    footer_template: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    color: Mapped[int] = mapped_column(Integer, default=0x2F855A)
+    show_cover: Mapped[bool] = mapped_column(Boolean, default=True)
+    metadata_fields: Mapped[list[str]] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    libraries: Mapped[list[Library]] = relationship(back_populates="template")
 
 
 class Book(Base):
