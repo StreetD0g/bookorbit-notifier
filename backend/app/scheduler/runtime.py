@@ -98,6 +98,16 @@ class RuntimeScheduler:
         delivery = await self._delivery_service.process_once(now=timestamp)
         return SchedulerTickReport(servers=tuple(reports), delivery=delivery)
 
+    async def run_manual_scan(self, server_id: int, *, now: datetime | None = None) -> ScheduledServerReport:
+        """Run one configured server without triggering an unrelated delivery tick."""
+
+        timestamp = now or datetime.now(UTC)
+        targets = self._due_servers(timestamp, server_id)
+        if not targets:
+            raise ValueError("Server is missing or disabled")
+        target_id, interval = targets[0]
+        return await self._run_server(target_id, interval, timestamp)
+
     async def run_forever(self, stop_event: asyncio.Event, *, tick_seconds: float = 1.0) -> None:
         """Run until application shutdown; tick frequently while server intervals remain configurable."""
 

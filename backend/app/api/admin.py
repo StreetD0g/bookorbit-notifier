@@ -25,7 +25,7 @@ from app.queue.worker import (
     render_embed,
 )
 from app.services.authentication import AuthenticationService
-from app.services.configuration import ConfigurationService, CreateServer, CreateTemplate, CreateWebhook
+from app.services.configuration import ConfigurationService, CreateServer, CreateTemplate, CreateWebhook, UpdateServer, UpdateWebhook
 from app.services.notifications import NotificationAdministrationService
 from app.services.sender_profiles import SenderProfileService
 from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES
@@ -85,6 +85,19 @@ class WebhookInput(BaseModel):
 
 class WebhookTestInput(BaseModel):
     library_id: int | None = Field(default=None, gt=0)
+
+
+class ServerUpdateInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    scan_interval_seconds: int = Field(ge=30, le=86400)
+    api_key: SecretStr | None = None
+
+
+class WebhookUpdateInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    enabled: StrictBool
+    webhook_url: SecretStr | None = None
+    confirm_destination_change: StrictBool = False
 
 
 class EnabledInput(BaseModel):
@@ -353,6 +366,43 @@ def set_server_enabled(
     return {"status": "saved"}
 
 
+@router.put("/servers/{server_id}")
+def update_server(
+    request: Request, server_id: int, payload: ServerUpdateInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+):
+    """Update a server without returning its existing or replacement API key."""
+
+    try:
+        return _configuration(request).update_server(
+            server_id,
+            UpdateServer(
+                name=payload.name,
+                scan_interval_seconds=payload.scan_interval_seconds,
+                api_key=payload.api_key.get_secret_value() if payload.api_key is not None else None,
+            ),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Server name already exists") from error
+
+
+@router.post("/servers/{server_id}/scan")
+async def scan_server(request: Request, server_id: int, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> dict:
+    """Run a scoped manual read-only reconciliation when the scheduler is enabled."""
+
+    scheduler = getattr(request.app.state, "runtime_scheduler", None)
+    if not get_settings().runtime_enabled or scheduler is None:
+        raise HTTPException(status_code=503, detail="Scheduler is not enabled")
+    try:
+        report = await scheduler.run_manual_scan(server_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail="Server is missing or disabled") from error
+    if report.error or (report.scan is not None and any(library.error for library in report.scan.libraries)):
+        raise HTTPException(status_code=502, detail="Server scan failed")
+    return {"server_id": report.server_id, "scan": report.scan, "metadata": report.metadata}
+
+
 @router.post("/servers/{server_id}/sync-libraries")
 async def sync_libraries(
     request: Request, server_id: int, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
@@ -417,6 +467,28 @@ async def test_webhook(
     except DiscordDeliveryError as error:
         raise HTTPException(status_code=502, detail="Discord test delivery failed") from error
     return {"status": "sent"}
+
+
+@router.put("/webhooks/{webhook_id}")
+def update_webhook(
+    request: Request, webhook_id: int, payload: WebhookUpdateInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+):
+    """Rotate a locally stored URL only after acknowledging queued deliveries may be redirected."""
+
+    try:
+        return _configuration(request).update_webhook(
+            webhook_id,
+            UpdateWebhook(
+                name=payload.name,
+                enabled=payload.enabled,
+                webhook_url=payload.webhook_url.get_secret_value() if payload.webhook_url is not None else None,
+                confirm_destination_change=payload.confirm_destination_change,
+            ),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Webhook name already exists") from error
 
 
 @router.get("/libraries")

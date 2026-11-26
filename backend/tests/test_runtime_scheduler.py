@@ -95,3 +95,15 @@ async def test_scheduler_observes_server_interval_and_manual_trigger(
     assert metadata.server_ids == [server.id, server.id]
     assert clients.connected_server_ids == [server.id, server.id]
     assert delivery.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_manual_scan_does_not_trigger_unrelated_delivery(scheduler_setup: tuple[sessionmaker[Session], Server]) -> None:
+    factory, server = scheduler_setup
+    polling, delivery = Polling(), Delivery()
+    scheduler = RuntimeScheduler(factory, ClientFactory(), polling, Metadata(), delivery)
+    report = await scheduler.run_manual_scan(server.id, now=datetime(2026, 11, 26, tzinfo=UTC))
+    assert report.server_id == server.id and report.error is None
+    assert polling.server_ids == [server.id] and delivery.calls == 0
+    with pytest.raises(ValueError, match="missing or disabled"):
+        await scheduler.run_manual_scan(999)

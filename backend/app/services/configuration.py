@@ -44,6 +44,25 @@ class CreateWebhook:
 
 
 @dataclass(frozen=True, slots=True)
+class UpdateServer:
+    """Retain source identity and current key unless the operator supplies a replacement."""
+
+    name: str
+    scan_interval_seconds: int
+    api_key: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateWebhook:
+    """A replacement destination requires separate explicit confirmation."""
+
+    name: str
+    enabled: bool
+    webhook_url: str | None = None
+    confirm_destination_change: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class CreateTemplate:
     """Strictly declarative template fields; arbitrary Python/JavaScript is not supported."""
 
@@ -130,6 +149,40 @@ class ConfigurationService:
                 session.add(webhook)
                 session.flush()
                 return WebhookView(id=webhook.id, name=webhook.name, enabled=webhook.enabled)
+
+    def update_server(self, server_id: int, command: UpdateServer) -> ServerView:
+        """Edit display/interval and optionally rotate the key, preserving the source identity."""
+
+        name = _required_text(command.name, "Server name", 120)
+        if not 30 <= command.scan_interval_seconds <= 86_400:
+            raise ValueError("Scan interval must be between 30 seconds and 24 hours")
+        key = self._cipher.encrypt(_required_text(command.api_key, "BookOrbit API key", 512)) if command.api_key is not None else None
+        with self._session_factory() as session, session.begin():
+            server = session.get(Server, server_id)
+            if server is None:
+                raise ValueError("Server does not exist")
+            server.name = name
+            server.scan_interval_seconds = command.scan_interval_seconds
+            if key is not None:
+                server.api_key_encrypted = key
+            return _server_view(server)
+
+    def update_webhook(self, webhook_id: int, command: UpdateWebhook) -> WebhookView:
+        """Change local destination settings without calling Discord's modify API."""
+
+        name = _required_text(command.name, "Webhook name", 120)
+        url = _validate_discord_webhook_url(command.webhook_url) if command.webhook_url is not None else None
+        if url is not None and not command.confirm_destination_change:
+            raise ValueError("Changing the webhook destination requires explicit confirmation")
+        with self._session_factory() as session, session.begin():
+            webhook = session.get(Webhook, webhook_id)
+            if webhook is None:
+                raise ValueError("Webhook does not exist")
+            webhook.name = name
+            webhook.enabled = command.enabled
+            if url is not None:
+                webhook.url_encrypted = self._cipher.encrypt(url)
+            return WebhookView(id=webhook.id, name=webhook.name, enabled=webhook.enabled)
 
     def create_template(self, command: CreateTemplate) -> int:
         """Persist a validated declarative template and return only its non-secret ID."""

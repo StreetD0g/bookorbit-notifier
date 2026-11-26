@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from cryptography.fernet import Fernet
@@ -202,10 +203,24 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
     response = http.post("/api/v1/admin/servers", headers=headers, json=payload)
     assert response.status_code == 201 and "bok_fixture_secret" not in response.text
     server_id = response.json()["id"]
+    assert http.post(f"/api/v1/admin/servers/{server_id}/scan", headers=headers).status_code == 503
+    update = {"name": "Renamed", "scan_interval_seconds": 120, "api_key": None}
+    assert http.put(f"/api/v1/admin/servers/{server_id}", headers={"origin": ORIGIN}, json=update).status_code == 401
+    assert http.put(f"/api/v1/admin/servers/{server_id}", headers=headers, json=update).status_code == 200
     webhook_payload = {"name": "New", "webhook_url": "https://discord.com/api/webhooks/123/fixture-token"}
     response = http.post("/api/v1/admin/webhooks", headers=headers, json=webhook_payload)
     assert response.status_code == 201 and "fixture-token" not in response.text
     webhook_id = response.json()["id"]
+    rotated = {"name": "New", "enabled": True, "webhook_url": "https://discord.com/api/webhooks/456/rotated-token"}
+    assert http.put(f"/api/v1/admin/webhooks/{webhook_id}", headers=headers, json=rotated).status_code == 400
+    with Session(engine) as session:
+        from app.core.crypto import SecretCipher
+
+        cipher = SecretCipher(get_settings().encryption_key.get_secret_value())
+        assert cipher.decrypt(session.get(Webhook, webhook_id).url_encrypted).endswith("fixture-token")
+        assert cipher.decrypt(session.get(Server, server_id).api_key_encrypted) == "bok_fixture_secret"
+    rotated["confirm_destination_change"] = True
+    assert http.put(f"/api/v1/admin/webhooks/{webhook_id}", headers=headers, json=rotated).status_code == 200
     assert "bok_fixture_secret" not in http.get("/api/v1/admin/servers").text
     assert "fixture-token" not in http.get("/api/v1/admin/webhooks").text
     with Session(engine) as session:
@@ -257,6 +272,7 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
     delivery["timezone"] = "Invalid/Zone"
     assert http.put(delivery_path, headers=headers, json=delivery).status_code == 400
     assert http.get("/api/v1/admin/libraries").json()[0]["timezone"] == "Europe/Berlin"
+    payload["name"] = "Renamed"
     assert http.post("/api/v1/admin/servers", headers=headers, json=payload).status_code == 409
     assert http.put(f"/api/v1/admin/servers/{server_id}/enabled", headers=headers, json={"enabled": False}).status_code == 200
 
@@ -280,3 +296,27 @@ def test_template_create_update_and_validation(client, monkeypatch: pytest.Monke
     payload["title_template"] = "New: {{title}}"
     assert http.put(f"/api/v1/admin/templates/{template_id}", headers=headers, json=payload).status_code == 200
     assert http.get("/api/v1/admin/templates").json()[0]["title_template"] == "New: {{title}}"
+
+
+def test_manual_scan_requires_csrf_and_reports_failure_without_secrets(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, _engine = client
+    csrf = setup_and_login(http)
+    monkeypatch.setenv("BOOKORBIT_NOTIFIER_RUNTIME_ENABLED", "true")
+    get_settings.cache_clear()
+
+    class FakeScheduler:
+        async def run_manual_scan(self, server_id):
+            return SimpleNamespace(server_id=server_id, error=None, scan=None, metadata=None)
+
+    monkeypatch.setitem(app.state._state, "runtime_scheduler", FakeScheduler())
+    assert http.post("/api/v1/admin/servers/7/scan", headers={"origin": ORIGIN}).status_code == 401
+    result = http.post("/api/v1/admin/servers/7/scan", headers={"origin": ORIGIN, "x-csrf-token": csrf})
+    assert result.status_code == 200 and result.json()["server_id"] == 7
+
+    class FailingScheduler:
+        async def run_manual_scan(self, server_id):
+            return SimpleNamespace(server_id=server_id, error="fixture-sensitive-details", scan=None, metadata=None)
+
+    monkeypatch.setitem(app.state._state, "runtime_scheduler", FailingScheduler())
+    result = http.post("/api/v1/admin/servers/7/scan", headers={"origin": ORIGIN, "x-csrf-token": csrf})
+    assert result.status_code == 502 and "fixture-sensitive-details" not in result.text

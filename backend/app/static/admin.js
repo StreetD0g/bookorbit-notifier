@@ -27,6 +27,8 @@ Object.assign(messages.de, {testMessage: "Testnachricht senden", testProfile: "P
 Object.assign(messages.en, {testMessage: "Send test message", testProfile: "Profile for test message", defaultProfile: "Webhook and global settings", testSent: "Test message sent."});
 Object.assign(messages.de, {refreshFailed: "Die Aktion war erfolgreich, aber die Ansicht konnte nicht aktualisiert werden."});
 Object.assign(messages.en, {refreshFailed: "The action succeeded, but the view could not be refreshed."});
+Object.assign(messages.de, {edit: "Bearbeiten", interval: "Scanintervall in Sekunden", replaceKey: "Neuer Leseschlüssel (leer lassen, um den bisherigen zu behalten)", saveChanges: "Änderungen speichern", replaceWebhook: "Neue Webhook-URL (leer lassen, um die bisherige zu behalten)", webhookEnabled: "Webhook aktiv", confirmWebhookChange: "Die Zieladresse wird ersetzt. Wartende Nachrichten können an das neue Ziel gesendet werden. Fortfahren?", manualScan: "Jetzt scannen", sourceIdentity: "Die Server-URL bleibt unverändert, damit vorhandene Bibliotheks-IDs zugeordnet bleiben."});
+Object.assign(messages.en, {edit: "Edit", interval: "Scan interval in seconds", replaceKey: "New read-only key (leave empty to keep the existing one)", saveChanges: "Save changes", replaceWebhook: "New webhook URL (leave empty to keep the existing one)", webhookEnabled: "Webhook enabled", confirmWebhookChange: "The destination will be replaced. Pending notifications may be sent to the new destination. Continue?", manualScan: "Scan now", sourceIdentity: "The server URL remains unchanged to preserve existing library identities."});
 let counts = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
@@ -188,7 +190,25 @@ function renderManagement() {
     const item = document.createElement("li"); item.append(document.createTextNode(server.name + " — " + server.base_url));
     item.append(actionButton(server.enabled ? strings().disable : strings().enable, () => call("/servers/" + server.id + "/enabled", mutationOptions({enabled: !server.enabled}))));
     const sync = actionButton(strings().syncLibraries, () => call("/servers/" + server.id + "/sync-libraries", {...mutationOptions({}), method: "POST"}));
-    sync.disabled = !server.enabled; item.append(sync); serverList.append(item);
+    sync.disabled = !server.enabled; item.append(sync);
+    const scan = actionButton(strings().manualScan, () => call("/servers/" + server.id + "/scan", {...mutationOptions({}), method: "POST"}));
+    scan.disabled = !server.enabled; item.append(scan);
+    const details = document.createElement("details"), summary = document.createElement("summary"), form = document.createElement("form");
+    summary.textContent = strings().edit; details.append(summary);
+    const notice = document.createElement("p"); notice.textContent = strings().sourceIdentity; form.append(notice);
+    function field(labelText, type, initial) { const label = document.createElement("label"), input = document.createElement("input"); label.textContent = labelText; input.type = type; input.value = initial; label.append(input); form.append(label); return input; }
+    const name = field(strings().name, "text", server.name); name.maxLength = 120; name.required = true;
+    const interval = field(strings().interval, "number", String(server.scan_interval_seconds)); interval.min = "30"; interval.max = "86400"; interval.required = true;
+    const key = field(strings().replaceKey, "password", ""); key.autocomplete = "off";
+    const save = document.createElement("button"); save.type = "submit"; save.textContent = strings().saveChanges; form.append(save);
+    form.addEventListener("submit", async event => {
+      event.preventDefault(); save.disabled = true;
+      try {
+        await call("/servers/" + server.id, mutationOptions({name: name.value, scan_interval_seconds: Number(interval.value), api_key: key.value || null}));
+        try { await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().refreshFailed; }
+      } catch { message.textContent = strings().failed; } finally { key.value = ""; save.disabled = false; }
+    });
+    details.append(form); item.append(details); serverList.append(item);
   }
   const webhookList = document.querySelector("#webhook-list"); webhookList.replaceChildren();
   for (const webhook of webhooks) {
@@ -201,7 +221,23 @@ function renderManagement() {
     }
     label.append(selection); item.append(label);
     const test = actionButton(strings().testMessage, () => call("/webhooks/" + webhook.id + "/test", {...mutationOptions({library_id: selection.value ? Number(selection.value) : null}), method: "POST"}), strings().testSent);
-    test.disabled = !webhook.enabled; item.append(test); webhookList.append(item);
+    test.disabled = !webhook.enabled; item.append(test);
+    const details = document.createElement("details"), summary = document.createElement("summary"), form = document.createElement("form");
+    summary.textContent = strings().edit; details.append(summary);
+    const nameLabel = document.createElement("label"), name = document.createElement("input"); nameLabel.textContent = strings().name; name.value = webhook.name; name.maxLength = 120; name.required = true; nameLabel.append(name); form.append(nameLabel);
+    const enabledLabel = document.createElement("label"), enabled = document.createElement("input"); enabled.type = "checkbox"; enabled.checked = webhook.enabled; enabledLabel.append(enabled, document.createTextNode(" " + strings().webhookEnabled)); form.append(enabledLabel);
+    const urlLabel = document.createElement("label"), url = document.createElement("input"); urlLabel.textContent = strings().replaceWebhook; url.type = "password"; url.autocomplete = "off"; urlLabel.append(url); form.append(urlLabel);
+    const save = document.createElement("button"); save.type = "submit"; save.textContent = strings().saveChanges; form.append(save);
+    form.addEventListener("submit", async event => {
+      event.preventDefault(); const replacing = url.value !== "";
+      if (replacing && !window.confirm(strings().confirmWebhookChange)) return;
+      save.disabled = true;
+      try {
+        await call("/webhooks/" + webhook.id, mutationOptions({name: name.value, enabled: enabled.checked, webhook_url: replacing ? url.value : null, confirm_destination_change: replacing}));
+        try { await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().refreshFailed; }
+      } catch { message.textContent = strings().failed; } finally { url.value = ""; save.disabled = false; }
+    });
+    details.append(form); item.append(details); webhookList.append(item);
   }
   const libraryList = document.querySelector("#library-list"); libraryList.replaceChildren();
   for (const library of libraries) {
