@@ -394,6 +394,57 @@ def test_server_connection_settings_are_validated_and_backward_compatible(client
     assert "key-secret" not in http.get("/api/v1/admin/servers").text
 
 
+def test_library_sample_probe_is_read_only_scoped_and_redacted(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, engine = client
+    monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    csrf = setup_and_login(http)
+    headers = {"origin": ORIGIN, "x-csrf-token": csrf}
+    with Session(engine) as session:
+        server = Server(name="Source", base_url="https://books.example", api_key_encrypted="encrypted")
+        library = Library(server=server, name="Books", bookorbit_library_id=17)
+        session.add_all([server, library])
+        session.commit()
+        server_id, library_id = server.id, library.id
+    state = {"empty": False, "cover": True, "failure": False, "calls": []}
+
+    class SampleClient:
+        async def query_library_books(self, source_id, *, page, size):
+            state["calls"].append(("query", source_id, page, size))
+            if state["failure"]:
+                raise BookOrbitApiError("private fixture error", 401)
+            return SimpleNamespace(items=[] if state["empty"] else [SimpleNamespace(id=123)])
+
+        async def get_book(self, book_id):
+            state["calls"].append(("detail", book_id))
+            return SimpleNamespace(title="private title")
+
+        async def get_cover(self, book_id):
+            state["calls"].append(("cover", book_id))
+            return CoverImage(content=b"image", content_type="image/png", filename="cover.png") if state["cover"] else None
+
+    @asynccontextmanager
+    async def fake_connect(_self, selected_server_id):
+        assert selected_server_id == server_id
+        yield SampleClient()
+
+    monkeypatch.setattr("app.api.admin.EncryptedBookOrbitClientFactory.connect", fake_connect)
+    path = f"/api/v1/admin/servers/{server_id}/libraries/{library_id}/probe"
+    assert http.post(path, headers={"origin": ORIGIN}).status_code == 401
+    assert http.post(f"/api/v1/admin/servers/{server_id + 1}/libraries/{library_id}/probe", headers=headers).status_code == 404
+    response = http.post(path, headers=headers)
+    assert response.json() == {"metadata": "available", "cover": "available"}
+    assert state["calls"] == [("query", 17, 0, 1), ("detail", 123), ("cover", 123)]
+    assert "private title" not in response.text and "123" not in response.text
+    state["cover"] = False
+    assert http.post(path, headers=headers).json() == {"metadata": "available", "cover": "missing"}
+    state["empty"] = True
+    assert http.post(path, headers=headers).json() == {"metadata": "no_sample", "cover": "not_checked"}
+    state.update(empty=False, failure=True)
+    failure = http.post(path, headers=headers)
+    assert failure.status_code == 502 and "private fixture error" not in failure.text
+
+
 def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(client, monkeypatch: pytest.MonkeyPatch) -> None:
     http, engine = client
     monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())

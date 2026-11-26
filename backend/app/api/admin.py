@@ -792,6 +792,33 @@ async def test_server_connection(
     return {"status": "ok", "authentication_method": identity.authentication_method, "library_count": len(libraries)}
 
 
+@router.post("/servers/{server_id}/libraries/{library_id}/probe")
+async def probe_library_content(
+    request: Request, server_id: int, library_id: int, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str]:
+    """Read one sample book and cover without disclosing source metadata or credentials."""
+
+    _configuration(request)
+    with request.app.state.session_factory() as session:
+        library = session.get(Library, library_id)
+        if library is None or library.server_id != server_id:
+            raise HTTPException(status_code=404, detail="Library is not available for this server")
+        source_library_id = library.bookorbit_library_id
+    cipher = SecretCipher(get_settings().encryption_key.get_secret_value())  # type: ignore[union-attr]
+    factory = EncryptedBookOrbitClientFactory(request.app.state.session_factory, cipher)
+    try:
+        async with factory.connect(server_id) as client:
+            page = await client.query_library_books(source_library_id, page=0, size=1)
+            if not page.items:
+                return {"metadata": "no_sample", "cover": "not_checked"}
+            book_id = page.items[0].id
+            await client.get_book(book_id)
+            cover = await client.get_cover(book_id)
+    except (BookOrbitApiError, ValueError) as error:
+        raise HTTPException(status_code=502, detail="Library sample test failed") from error
+    return {"metadata": "available", "cover": "available" if cover is not None else "missing"}
+
+
 @router.get("/webhooks")
 def list_webhooks(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> list[dict]:
     """Never include webhook URLs or ciphertext in the response."""

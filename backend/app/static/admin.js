@@ -88,6 +88,8 @@ Object.assign(messages.de, {latestArrivals: "Zuletzt erkannte Medien", latestArr
 Object.assign(messages.en, {latestArrivals: "Recently detected media", latestArrivalsHelp: "Detected arrivals only; the silent initial baseline is excluded.", allArrivals: "Show all arrivals"});
 Object.assign(messages.de, {connectionSettings: "Verbindungseinstellungen", publicUrl: "Öffentliche Server-URL (optional)", connectionTimeout: "Verbindungs-Timeout in Sekunden", verifySsl: "TLS-Zertifikat prüfen", publicUrlHelp: "Die öffentliche URL wird gespeichert; direkte Buchlinks werden noch nicht erzeugt.", verifySslHelp: "Ohne Zertifikatsprüfung kann die Serveridentität nicht überprüft werden."});
 Object.assign(messages.en, {connectionSettings: "Connection settings", publicUrl: "Public server URL (optional)", connectionTimeout: "Connection timeout in seconds", verifySsl: "Verify TLS certificate", publicUrlHelp: "The public URL is stored; direct book links are not generated yet.", verifySslHelp: "Without certificate verification, the server identity cannot be verified."});
+Object.assign(messages.de, {probeLibrary: "Bibliothek für Beispielprüfung", probeContent: "Metadaten und Cover prüfen", probeEmpty: "Kein Beispielmedium in dieser Bibliothek gefunden.", probeCoverOk: "Metadaten und Cover sind für das Beispiel abrufbar.", probeCoverMissing: "Metadaten sind abrufbar; für das Beispiel ist kein Cover vorhanden.", probeFailed: "Beispielprüfung fehlgeschlagen. Bitte Verbindung und Leseberechtigung prüfen."});
+Object.assign(messages.en, {probeLibrary: "Library for sample check", probeContent: "Check metadata and cover", probeEmpty: "No sample media found in this library.", probeCoverOk: "Metadata and cover are accessible for the sample.", probeCoverMissing: "Metadata is accessible; the sample has no cover.", probeFailed: "Sample check failed. Check the connection and read access."});
 messages.de.loadCover = "Cover laden";
 messages.en.loadCover = "Load cover";
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
@@ -576,6 +578,21 @@ function renderManagement() {
     test.disabled = !server.enabled; item.append(test);
     const scan = actionButton(strings().manualScan, () => call("/servers/" + server.id + "/scan", {...mutationOptions({}), method: "POST"}));
     scan.disabled = !server.enabled; item.append(scan);
+    const probeLabel = document.createElement("label"), probeLibrary = document.createElement("select"); probeLabel.textContent = " " + strings().probeLibrary + " ";
+    for (const library of libraries.filter(entry => entry.server_id === server.id)) {
+      const option = document.createElement("option"); option.value = String(library.id); option.textContent = library.name; probeLibrary.append(option);
+    }
+    probeLabel.append(probeLibrary); item.append(probeLabel);
+    const probe = document.createElement("button"); probe.type = "button"; probe.textContent = strings().probeContent;
+    probe.disabled = !server.enabled || !probeLibrary.options.length;
+    probe.addEventListener("click", async () => {
+      probe.disabled = true;
+      try {
+        const result = await call("/servers/" + server.id + "/libraries/" + encodeURIComponent(probeLibrary.value) + "/probe", {...mutationOptions({}), method: "POST"});
+        message.textContent = result.metadata === "no_sample" ? strings().probeEmpty : result.cover === "available" ? strings().probeCoverOk : strings().probeCoverMissing;
+      } catch { message.textContent = strings().probeFailed; } finally { probe.disabled = false; }
+    });
+    item.append(probe);
     const details = document.createElement("details"), summary = document.createElement("summary"), form = document.createElement("form");
     summary.textContent = strings().edit; details.append(summary);
     const notice = document.createElement("p"); notice.textContent = strings().sourceIdentity; form.append(notice);
