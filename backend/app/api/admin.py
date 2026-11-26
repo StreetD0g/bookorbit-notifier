@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
 from app.core.crypto import SecretCipher
-from app.database.models import Book, DeliveryMode, Library, NotificationTemplate, Server, Webhook
+from app.database.models import Book, DeliveryMode, Event, EventType, Library, NotificationQueueItem, NotificationTemplate, Server, Webhook
 from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.providers.events.bookorbit.factory import EncryptedBookOrbitClientFactory
 from app.providers.notifications.discord.client import DiscordDeliveryError
@@ -285,6 +285,59 @@ def list_notifications(
     """List redacted delivery rows in bounded pages."""
 
     return NotificationAdministrationService(request.app.state.session_factory).list_deliveries(limit=limit, offset=offset)
+
+
+@router.get("/arrivals")
+def list_arrivals(
+    request: Request,
+    _auth: Annotated[AuthenticationService, Depends(_authenticated)],
+    server_id: int | None = Query(default=None, gt=0),
+    library_id: int | None = Query(default=None, gt=0),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> list[dict]:
+    """List detected arrivals only; baseline inventory is not represented as a new event."""
+
+    with request.app.state.session_factory() as session:
+        query = (
+            select(Event, Book, Server.name, Library.name)
+            .join(Book, Event.book_id == Book.id)
+            .join(Server, Event.server_id == Server.id)
+            .join(Library, Event.library_id == Library.id)
+            .where(Event.event_type == EventType.BOOK_ADDED)
+        )
+        if server_id is not None:
+            query = query.where(Event.server_id == server_id)
+        if library_id is not None:
+            query = query.where(Event.library_id == library_id)
+        rows = session.execute(query.order_by(Event.detected_at.desc(), Event.id.desc()).limit(limit).offset(offset)).all()
+        event_ids = [event.id for event, _book, _server, _library in rows]
+        delivery_rows = (
+            session.execute(
+                select(NotificationQueueItem.event_id, NotificationQueueItem.status).where(NotificationQueueItem.event_id.in_(event_ids))
+            ).all()
+            if event_ids
+            else []
+        )
+        statuses: dict[int, list[str]] = {}
+        for event_id, state in delivery_rows:
+            statuses.setdefault(event_id, []).append(state.value)
+        return [
+            {
+                "event_id": event.id,
+                "book_id": book.bookorbit_book_id,
+                "title": book.title,
+                "authors": book.authors_json,
+                "server_id": event.server_id,
+                "server_name": server_name,
+                "library_id": event.library_id,
+                "library_name": library_name,
+                "detected_at": event.detected_at,
+                "status": event.status,
+                "delivery_statuses": statuses.get(event.id, []),
+            }
+            for event, book, server_name, library_name in rows
+        ]
 
 
 @router.get("/notifications/{queue_item_id}/history")

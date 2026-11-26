@@ -84,6 +84,7 @@ def test_setup_login_cookie_csrf_and_logout(client) -> None:
 
 def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
     http, engine = client
+    assert http.get("/api/v1/admin/arrivals").status_code == 401
     csrf = setup_and_login(http)
     with Session(engine) as session:
         server = Server(name="Source", base_url="https://books.example", api_key_encrypted="encrypted")
@@ -91,12 +92,18 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
         library.webhooks.append(Webhook(name="Target", url_encrypted="encrypted"))
         session.add(library)
         session.commit()
-        reconcile_library_inventory(session, server_id=server.id, library_id=library.id, observed_books=[], scan_complete=True)
         reconcile_library_inventory(
             session,
             server_id=server.id,
             library_id=library.id,
-            observed_books=[ObservedBook(bookorbit_book_id=2, title="New")],
+            observed_books=[ObservedBook(bookorbit_book_id=1, title="Existing")],
+            scan_complete=True,
+        )
+        reconcile_library_inventory(
+            session,
+            server_id=server.id,
+            library_id=library.id,
+            observed_books=[ObservedBook(bookorbit_book_id=1, title="Existing"), ObservedBook(bookorbit_book_id=2, title="New")],
             scan_complete=True,
         )
         session.commit()
@@ -106,6 +113,13 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
         item.status = QueueStatus.SENT
         session.commit()
         item_id = item.id
+        server_id = server.id
+        library_id = library.id
+    arrivals = http.get(f"/api/v1/admin/arrivals?server_id={server_id}&library_id={library_id}").json()
+    assert len(arrivals) == 1 and arrivals[0]["title"] == "New" and arrivals[0]["delivery_statuses"] == ["SENT"]
+    assert "encrypted" not in str(arrivals)
+    assert http.get("/api/v1/admin/arrivals?server_id=999").json() == []
+    assert http.get("/api/v1/admin/arrivals?limit=101").status_code == 422
     path = f"/api/v1/admin/notifications/{item_id}/retry"
     listing = http.get("/api/v1/admin/notifications")
     assert listing.status_code == 200 and listing.json()[0]["book_title"] == "New"

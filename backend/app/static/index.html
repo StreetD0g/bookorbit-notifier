@@ -38,6 +38,16 @@
       <button id="refresh" type="button" data-text="refresh">Aktualisieren</button>
       <button id="logout" type="button" data-text="logout">Abmelden</button>
       <dl id="counts"></dl>
+      <section class="management" aria-labelledby="arrivals-heading">
+        <h2 id="arrivals-heading" data-text="arrivals">Neuzugänge</h2>
+        <p data-text="arrivalsHelp">Erkannte Neuzugänge; die stille Ersterfassung ist nicht enthalten.</p>
+        <label for="arrivals-server" data-text="arrivalsServer">Server</label>
+        <select id="arrivals-server"></select>
+        <label for="arrivals-library" data-text="arrivalsLibrary">Bibliothek</label>
+        <select id="arrivals-library"></select>
+        <button type="button" id="arrivals-refresh" data-text="refresh">Aktualisieren</button>
+        <div id="arrivals-list"></div>
+      </section>
       <details class="management">
         <summary data-text="changePassword">Passwort ändern</summary>
         <form id="change-password-form">

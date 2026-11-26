@@ -31,6 +31,8 @@ Object.assign(messages.de, {edit: "Bearbeiten", interval: "Scanintervall in Seku
 Object.assign(messages.en, {edit: "Edit", interval: "Scan interval in seconds", replaceKey: "New read-only key (leave empty to keep the existing one)", saveChanges: "Save changes", replaceWebhook: "New webhook URL (leave empty to keep the existing one)", webhookEnabled: "Webhook enabled", confirmWebhookChange: "The destination will be replaced. Pending notifications may be sent to the new destination. Continue?", manualScan: "Scan now", sourceIdentity: "The server URL remains unchanged to preserve existing library identities."});
 Object.assign(messages.de, {changePassword: "Passwort ändern", currentPassword: "Bisheriges Passwort", repeatPassword: "Neues Passwort wiederholen", passwordSessions: "Nach der Änderung werden alle Sitzungen abgemeldet.", passwordMismatch: "Die neuen Passwörter stimmen nicht überein.", passwordChanged: "Passwort geändert. Bitte melde dich erneut an."});
 Object.assign(messages.en, {changePassword: "Change password", currentPassword: "Current password", repeatPassword: "Repeat new password", passwordSessions: "All sessions will be signed out after the change.", passwordMismatch: "The new passwords do not match.", passwordChanged: "Password changed. Please sign in again."});
+Object.assign(messages.de, {arrivals: "Neuzugänge", arrivalsHelp: "Erkannte Neuzugänge; die stille Ersterfassung ist nicht enthalten.", arrivalsServer: "Server", arrivalsLibrary: "Bibliothek", all: "Alle", noArrivals: "Keine Neuzugänge für diese Auswahl.", eventStatus: "Ereignisstatus", deliveryStates: "Zustellstatus"});
+Object.assign(messages.en, {arrivals: "New arrivals", arrivalsHelp: "Detected arrivals; the silent initial baseline is excluded.", arrivalsServer: "Server", arrivalsLibrary: "Library", all: "All", noArrivals: "No arrivals match this selection.", eventStatus: "Event status", deliveryStates: "Delivery status"});
 let counts = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
@@ -38,6 +40,8 @@ let previewRequest = 0, previewTimer;
 let servers = [], webhooks = [], libraries = [];
 let deliveries = [];
 let templates = [];
+let arrivals = [];
+let arrivalsRequest = 0;
 function strings() { return messages[language.value]; }
 function translate() {
   document.documentElement.lang = language.value;
@@ -46,6 +50,8 @@ function translate() {
   renderManagement();
   renderDeliveries();
   populateTemplateSelector();
+  populateArrivalFilters();
+  renderArrivals();
   updatePreviewSender();
 }
 function cookie(name) {
@@ -125,6 +131,8 @@ async function refresh() {
   counts = await call("/notifications/summary");
   scopes = await call("/profile-scopes");
   [servers, webhooks, libraries, deliveries, templates] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries"), call("/notifications"), call("/templates")]);
+  populateArrivalFilters();
+  await loadArrivals();
   populateTemplateSelector();
   renderManagement();
   renderDeliveries();
@@ -140,6 +148,43 @@ async function refresh() {
   authPanel.hidden = true;
   dashboard.hidden = false;
 }
+function fillFilter(select, entries, previous) {
+  select.replaceChildren();
+  const all = document.createElement("option"); all.value = ""; all.textContent = strings().all; select.append(all);
+  for (const entry of entries) { const option = document.createElement("option"); option.value = String(entry.id); option.textContent = entry.name; select.append(option); }
+  if ([...select.options].some(option => option.value === previous)) select.value = previous;
+}
+function populateArrivalFilters() {
+  const server = document.querySelector("#arrivals-server"), library = document.querySelector("#arrivals-library");
+  const serverValue = server.value, libraryValue = library.value;
+  fillFilter(server, servers, serverValue);
+  fillFilter(library, libraries.filter(entry => !server.value || String(entry.server_id) === server.value), libraryValue);
+}
+async function loadArrivals() {
+  const request = ++arrivalsRequest;
+  const params = new URLSearchParams();
+  const server = document.querySelector("#arrivals-server").value, library = document.querySelector("#arrivals-library").value;
+  if (server) params.set("server_id", server);
+  if (library) params.set("library_id", library);
+  const result = await call("/arrivals?" + params.toString());
+  if (request !== arrivalsRequest) return;
+  arrivals = result; renderArrivals();
+}
+function renderArrivals() {
+  const container = document.querySelector("#arrivals-list"); container.replaceChildren();
+  if (!arrivals.length) { const empty = document.createElement("p"); empty.textContent = strings().noArrivals; container.append(empty); return; }
+  for (const arrival of arrivals) {
+    const card = document.createElement("div"); card.className = "library-card";
+    const title = document.createElement("h3"); title.textContent = arrival.title || "—"; card.append(title);
+    const authors = document.createElement("p"); authors.textContent = arrival.authors.join(", "); card.append(authors);
+    const source = document.createElement("p"); source.textContent = [arrival.server_name, arrival.library_name, arrival.detected_at].join(" · "); card.append(source);
+    const state = document.createElement("p"); state.textContent = strings().eventStatus + ": " + arrival.status + " · " + strings().deliveryStates + ": " + arrival.delivery_statuses.join(", "); card.append(state);
+    container.append(card);
+  }
+}
+document.querySelector("#arrivals-server").addEventListener("change", () => { populateArrivalFilters(); loadArrivals().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#arrivals-library").addEventListener("change", () => loadArrivals().catch(() => { message.textContent = strings().failed; }));
+document.querySelector("#arrivals-refresh").addEventListener("click", () => loadArrivals().catch(() => { message.textContent = strings().failed; }));
 function renderDeliveries() {
   const list = document.querySelector("#delivery-list"); list.replaceChildren();
   for (const delivery of deliveries) {

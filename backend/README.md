@@ -24,6 +24,8 @@ Existing server URLs cannot be changed in place because existing library and boo
 
 Per-library delivery modes can be changed in the library view. Changes apply to future scheduling decisions; queue entries already scheduled retain their existing due time. The delivery history displays the latest 50 records and allows explicit retries, with separate confirmation required for a successful prior delivery.
 
+The arrivals view displays the latest 50 detected new-book events and supports server and library filters. It does not show the initial silent baseline. Cover views and the remaining arrival filters are not yet available.
+
 The webhook test button sends a fixed test message to the selected destination. It resolves the global and webhook sender settings, optionally including a routed library's overrides; it does not change the Discord webhook itself. The test message does not use the template preview, and it does not create a normal arrival event.
 
 The Discord preview uses fixed sample metadata and the same safe renderer as delivery. Title, description and footer can be saved as a named template and assigned to libraries; previewing alone neither saves nor sends a message. The variable selector lists available placeholders. Actual field availability depends on the BookOrbit version and each book's metadata. The avatar placeholder and inherited sender label do not yet reproduce a Discord webhook's original profile. Cover selection, per-field arrangement and drag-and-drop are not yet implemented in the editor.
