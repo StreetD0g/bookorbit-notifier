@@ -14,6 +14,7 @@ from app.database.base import Base
 from app.database.models import Event, Library, NotificationQueueItem, QueueStatus, Server, Webhook
 from app.database.session import create_database_engine
 from app.main import app
+from app.providers.notifications.discord.client import DiscordDeliveryError
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
 from app.schemas.bookorbit import BookOrbitLibrary
 
@@ -226,6 +227,36 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
     routing = {"monitored": True, "webhook_ids": [webhook_id], "template_id": None}
     assert http.put(f"/api/v1/admin/libraries/{library['id']}/routing", headers=headers, json=routing).status_code == 200
     assert http.get("/api/v1/admin/libraries").json()[0]["webhook_ids"] == [webhook_id]
+    profile = {"username": {"choice": "custom", "value": "Library Bot"}, "avatar_url": {"choice": "original"}}
+    assert http.put(f"/api/v1/admin/sender-profiles/library?scope_id={library['id']}", headers=headers, json=profile).status_code == 200
+    captured = []
+
+    async def fake_send(_self, target, notification):
+        captured.append((target.username, target.avatar_url, notification.embed))
+        return "message-id", 200
+
+    monkeypatch.setattr("app.api.admin.DiscordNotificationSender.send", fake_send)
+    test_path = f"/api/v1/admin/webhooks/{webhook_id}/test"
+    assert http.post(test_path, headers={"origin": ORIGIN}, json={"library_id": library["id"]}).status_code == 401
+    result = http.post(test_path, headers=headers, json={"library_id": library["id"]})
+    assert result.status_code == 200 and "fixture-token" not in result.text
+    assert captured[0][0] == "Library Bot" and captured[0][1] is None
+    assert http.post(test_path, headers=headers, json={"library_id": 999}).status_code == 400
+
+    async def fake_failure(_self, _target, _notification):
+        raise DiscordDeliveryError(429)
+
+    monkeypatch.setattr("app.api.admin.DiscordNotificationSender.send", fake_failure)
+    failure = http.post(test_path, headers=headers, json={"library_id": library["id"]})
+    assert failure.status_code == 502 and "fixture-token" not in failure.text
+    delivery_path = f"/api/v1/admin/libraries/{library['id']}/delivery"
+    delivery = {"delivery_mode": "DAILY_SUMMARY", "batch_window_seconds": 300, "daily_summary_time": "18:00", "timezone": "Europe/Berlin"}
+    assert http.put(delivery_path, headers={"origin": ORIGIN}, json=delivery).status_code == 401
+    assert http.put(delivery_path, headers=headers, json=delivery).status_code == 200
+    assert http.get("/api/v1/admin/libraries").json()[0]["delivery_mode"] == "DAILY_SUMMARY"
+    delivery["timezone"] = "Invalid/Zone"
+    assert http.put(delivery_path, headers=headers, json=delivery).status_code == 400
+    assert http.get("/api/v1/admin/libraries").json()[0]["timezone"] == "Europe/Berlin"
     assert http.post("/api/v1/admin/servers", headers=headers, json=payload).status_code == 409
     assert http.put(f"/api/v1/admin/servers/{server_id}/enabled", headers=headers, json={"enabled": False}).status_code == 200
 

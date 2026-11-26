@@ -21,6 +21,12 @@ Object.assign(messages.de, {history: "Zustellhistorie", historyHelp: "Die neuest
 Object.assign(messages.en, {history: "Delivery history", historyHelp: "The latest 50 deliveries. Resending a delivered notification creates another Discord message.", attempts: "Attempts", detectedAt: "Detected", sentAt: "Sent", lastError: "Last error", discordId: "Discord message ID", retryAction: "Retry", resendConfirm: "This notification was already sent. Send another Discord message?", showHistory: "Show attempts"});
 Object.assign(messages.de, {previewHint: "Die Vorschau zeigt Beispieldaten. Änderungen werden erst beim Speichern übernommen und nicht versendet.", templateSelect: "Vorlage", newTemplate: "Neue Vorlage", templateName: "Vorlagenname", saveTemplate: "Vorlage speichern", libraryTemplate: "Vorlage für diese Bibliothek", defaultTemplate: "Standardvorlage"});
 Object.assign(messages.en, {previewHint: "The preview shows sample data. Changes are only applied when saved and are not sent.", templateSelect: "Template", newTemplate: "New template", templateName: "Template name", saveTemplate: "Save template", libraryTemplate: "Template for this library", defaultTemplate: "Default template"});
+Object.assign(messages.de, {deliveryMode: "Versandmodus", modeSingle: "Einzeln", modeBatch: "Gebündelt", modeDaily: "Tägliche Zusammenfassung", batchSeconds: "Sammelzeit in Sekunden (30–86400)", dailyTime: "Uhrzeit der Zusammenfassung", timezone: "Zeitzone (IANA)", saveDelivery: "Versandmodus speichern", deliveryHint: "Bereits eingeplante Nachrichten behalten ihren Versandzeitpunkt."});
+Object.assign(messages.en, {deliveryMode: "Delivery mode", modeSingle: "Individual", modeBatch: "Batch", modeDaily: "Daily summary", batchSeconds: "Batch window in seconds (30–86400)", dailyTime: "Summary time", timezone: "Time zone (IANA)", saveDelivery: "Save delivery mode", deliveryHint: "Already scheduled notifications retain their due time."});
+Object.assign(messages.de, {testMessage: "Testnachricht senden", testProfile: "Profil für Testnachricht", defaultProfile: "Webhook- und globale Einstellungen", testSent: "Testnachricht gesendet."});
+Object.assign(messages.en, {testMessage: "Send test message", testProfile: "Profile for test message", defaultProfile: "Webhook and global settings", testSent: "Test message sent."});
+Object.assign(messages.de, {refreshFailed: "Die Aktion war erfolgreich, aber die Ansicht konnte nicht aktualisiert werden."});
+Object.assign(messages.en, {refreshFailed: "The action succeeded, but the view could not be refreshed."});
 let counts = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
@@ -163,9 +169,17 @@ function renderDeliveries() {
 function mutationOptions(body) {
   return {method: "PUT", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify(body)};
 }
-function actionButton(label, action) {
+function actionButton(label, action, success = null) {
   const button = document.createElement("button"); button.type = "button"; button.textContent = label;
-  button.addEventListener("click", async () => { try { if (await action() === false) return; await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().failed; } });
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      try { if (await action() === false) return; }
+      catch { message.textContent = strings().failed; return; }
+      try { await refresh(); message.textContent = success || strings().configuredOk; }
+      catch { message.textContent = strings().refreshFailed; }
+    } finally { button.disabled = false; }
+  });
   return button;
 }
 function renderManagement() {
@@ -177,7 +191,18 @@ function renderManagement() {
     sync.disabled = !server.enabled; item.append(sync); serverList.append(item);
   }
   const webhookList = document.querySelector("#webhook-list"); webhookList.replaceChildren();
-  for (const webhook of webhooks) { const item = document.createElement("li"); item.textContent = webhook.name; webhookList.append(item); }
+  for (const webhook of webhooks) {
+    const item = document.createElement("li"); item.append(document.createTextNode(webhook.name));
+    const label = document.createElement("label"), selection = document.createElement("select"); label.textContent = " " + strings().testProfile + " ";
+    const standard = document.createElement("option"); standard.value = ""; standard.textContent = strings().defaultProfile; selection.append(standard);
+    for (const library of libraries.filter(entry => entry.webhook_ids.includes(webhook.id))) {
+      const option = document.createElement("option"), source = servers.find(server => server.id === library.server_id);
+      option.value = String(library.id); option.textContent = (source?.name || "") + " — " + library.name; selection.append(option);
+    }
+    label.append(selection); item.append(label);
+    const test = actionButton(strings().testMessage, () => call("/webhooks/" + webhook.id + "/test", {...mutationOptions({library_id: selection.value ? Number(selection.value) : null}), method: "POST"}), strings().testSent);
+    test.disabled = !webhook.enabled; item.append(test); webhookList.append(item);
+  }
   const libraryList = document.querySelector("#library-list"); libraryList.replaceChildren();
   for (const library of libraries) {
     const card = document.createElement("div"); card.className = "library-card";
@@ -199,6 +224,29 @@ function renderManagement() {
     templateSelect.value = library.template_id === null ? "" : String(library.template_id);
     templateLabel.append(templateSelect); card.append(templateLabel);
     card.append(actionButton(strings().saveRouting, () => call("/libraries/" + library.id + "/routing", mutationOptions({monitored: monitored.checked, webhook_ids: choices.filter(([, checkbox]) => checkbox.checked).map(([id]) => id), template_id: templateSelect.value ? Number(templateSelect.value) : null}))));
+    const delivery = document.createElement("form");
+    const modeLabel = document.createElement("label"), mode = document.createElement("select"); modeLabel.textContent = strings().deliveryMode;
+    for (const [value, label] of [["SINGLE", strings().modeSingle], ["BATCH", strings().modeBatch], ["DAILY_SUMMARY", strings().modeDaily]]) {
+      const option = document.createElement("option"); option.value = value; option.textContent = label; mode.append(option);
+    }
+    mode.value = library.delivery_mode; modeLabel.append(mode); delivery.append(modeLabel);
+    function inputField(labelText, type, value) {
+      const label = document.createElement("label"), input = document.createElement("input");
+      label.textContent = labelText; input.type = type; input.value = String(value); input.required = true; label.append(input); delivery.append(label); return input;
+    }
+    const batch = inputField(strings().batchSeconds, "number", library.batch_window_seconds); batch.min = "30"; batch.max = "86400";
+    const daily = inputField(strings().dailyTime, "time", library.daily_summary_time);
+    const zone = inputField(strings().timezone, "text", library.timezone); zone.maxLength = 64;
+    const hint = document.createElement("p"); hint.textContent = strings().deliveryHint; delivery.append(hint);
+    const save = document.createElement("button"); save.type = "submit"; save.textContent = strings().saveDelivery; delivery.append(save);
+    delivery.addEventListener("submit", async event => {
+      event.preventDefault();
+      try {
+        await call("/libraries/" + library.id + "/delivery", mutationOptions({delivery_mode: mode.value, batch_window_seconds: Number(batch.value), daily_summary_time: daily.value, timezone: zone.value}));
+        await refresh(); message.textContent = strings().configuredOk;
+      } catch { message.textContent = strings().failed; }
+    });
+    card.append(delivery);
     libraryList.append(card);
   }
 }

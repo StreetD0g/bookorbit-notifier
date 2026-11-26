@@ -11,11 +11,19 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
 from app.core.crypto import SecretCipher
-from app.database.models import Book, Library, NotificationTemplate, Server, Webhook
+from app.database.models import Book, DeliveryMode, Library, NotificationTemplate, Server, Webhook
 from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.providers.events.bookorbit.factory import EncryptedBookOrbitClientFactory
+from app.providers.notifications.discord.client import DiscordDeliveryError
 from app.providers.notifications.discord.sender_profile import ProfileChoice, ProfileField, SenderProfile
-from app.queue.worker import _template_values, render_embed
+from app.queue.worker import (
+    DiscordNotificationSender,
+    EncryptedWebhookTargetResolver,
+    OutgoingNotification,
+    WebhookTarget,
+    _template_values,
+    render_embed,
+)
 from app.services.authentication import AuthenticationService
 from app.services.configuration import ConfigurationService, CreateServer, CreateTemplate, CreateWebhook
 from app.services.notifications import NotificationAdministrationService
@@ -75,6 +83,10 @@ class WebhookInput(BaseModel):
     webhook_url: SecretStr
 
 
+class WebhookTestInput(BaseModel):
+    library_id: int | None = Field(default=None, gt=0)
+
+
 class EnabledInput(BaseModel):
     enabled: StrictBool
 
@@ -83,6 +95,13 @@ class LibraryRoutingInput(BaseModel):
     monitored: StrictBool
     webhook_ids: list[int] = Field(max_length=100)
     template_id: int | None = None
+
+
+class LibraryDeliveryInput(BaseModel):
+    delivery_mode: DeliveryMode
+    batch_window_seconds: int = Field(ge=30, le=86400)
+    daily_summary_time: str = Field(max_length=5)
+    timezone: str = Field(max_length=64)
 
 
 class TemplateInput(BaseModel):
@@ -373,6 +392,33 @@ def create_webhook(request: Request, payload: WebhookInput, _auth: Annotated[Aut
         raise HTTPException(status_code=409, detail="Webhook name already exists") from error
 
 
+@router.post("/webhooks/{webhook_id}/test")
+async def test_webhook(
+    request: Request, webhook_id: int, payload: WebhookTestInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str]:
+    """Send a fixed test message with resolved profile overrides, without modifying the webhook."""
+
+    _configuration(request)
+    if payload.library_id is not None:
+        with request.app.state.session_factory() as session:
+            library = session.get(Library, payload.library_id)
+            if library is None or webhook_id not in {webhook.id for webhook in library.webhooks}:
+                raise HTTPException(status_code=400, detail="Library is not routed to this webhook")
+    cipher = SecretCipher(get_settings().encryption_key.get_secret_value())  # type: ignore[union-attr]
+    try:
+        target = EncryptedWebhookTargetResolver(request.app.state.session_factory, cipher).resolve(webhook_id)
+        username, avatar_url = SenderProfileService(request.app.state.session_factory).resolve(payload.library_id or 0, webhook_id)
+        target = WebhookTarget(webhook_id=target.webhook_id, webhook_url=target.webhook_url, username=username, avatar_url=avatar_url)
+        await DiscordNotificationSender().send(
+            target, OutgoingNotification(embed={"title": "BookOrbit Notifier", "description": "This is a test notification."})
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Webhook is unavailable") from error
+    except DiscordDeliveryError as error:
+        raise HTTPException(status_code=502, detail="Discord test delivery failed") from error
+    return {"status": "sent"}
+
+
 @router.get("/libraries")
 def list_libraries(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> list[dict]:
     """Return current routing by source IDs, with no source or destination secrets."""
@@ -387,6 +433,10 @@ def list_libraries(request: Request, _auth: Annotated[AuthenticationService, Dep
                 "monitored": row.monitored,
                 "webhook_ids": [webhook.id for webhook in row.webhooks],
                 "template_id": row.template_id,
+                "delivery_mode": row.delivery_mode,
+                "batch_window_seconds": row.batch_window_seconds,
+                "daily_summary_time": row.daily_summary_time,
+                "timezone": row.timezone,
             }
             for row in rows
         ]
@@ -401,6 +451,25 @@ def configure_library_routing(
     try:
         _configuration(request).configure_library_routing(
             library_id, monitored=payload.monitored, webhook_ids=payload.webhook_ids, template_id=payload.template_id
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {"status": "saved"}
+
+
+@router.put("/libraries/{library_id}/delivery")
+def configure_library_delivery(
+    request: Request, library_id: int, payload: LibraryDeliveryInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str]:
+    """Set the mode for future events; already scheduled rows keep their deadlines."""
+
+    try:
+        _configuration(request).configure_library_delivery(
+            library_id,
+            delivery_mode=payload.delivery_mode,
+            batch_window_seconds=payload.batch_window_seconds,
+            daily_summary_time=payload.daily_summary_time,
+            timezone=payload.timezone,
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
