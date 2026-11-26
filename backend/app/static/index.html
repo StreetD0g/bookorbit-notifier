@@ -137,6 +137,15 @@
           <label for="server-name" data-text="name">Name</label><input id="server-name" maxlength="120" required>
           <label for="server-url" data-text="serverUrl">Server-URL</label><input id="server-url" type="url" maxlength="2048" required>
           <label for="server-key" data-text="serverKey">BookOrbit-Leseschlüssel</label><input id="server-key" type="password" autocomplete="off" required>
+          <details class="connection-settings">
+            <summary data-text="connectionSettings">Verbindungseinstellungen</summary>
+            <label for="server-public-url" data-text="publicUrl">Öffentliche Server-URL (optional)</label><input id="server-public-url" type="url" maxlength="2048">
+            <label for="server-interval" data-text="interval">Scanintervall in Sekunden</label><input id="server-interval" type="number" min="30" max="86400" value="60">
+            <label for="server-timeout" data-text="connectionTimeout">Verbindungs-Timeout in Sekunden</label><input id="server-timeout" type="number" min="1" max="120" value="15">
+            <label><input id="server-verify-ssl" type="checkbox" checked> <span data-text="verifySsl">TLS-Zertifikat prüfen</span></label>
+            <p data-text="publicUrlHelp">Die öffentliche URL wird gespeichert; direkte Buchlinks werden noch nicht erzeugt.</p>
+            <p data-text="verifySslHelp">Ohne Zertifikatsprüfung kann die Serveridentität nicht überprüft werden.</p>
+          </details>
           <button type="submit" data-text="addServer">Server hinzufügen</button>
         </form>
         <ul id="server-list"></ul>

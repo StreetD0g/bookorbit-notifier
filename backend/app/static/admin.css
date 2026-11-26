@@ -12,6 +12,8 @@ header h1 { flex: 1 1 20rem; }
 .main-navigation a:focus-visible, .sub-navigation a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 section { background: var(--surface); border-radius: .6rem; padding: 1.5rem; }
 form { display: grid; gap: .6rem; max-width: 30rem; margin: 1rem 0; }
+.connection-settings label { display: block; margin-top: .6rem; }
+.connection-settings input:not([type="checkbox"]) { box-sizing: border-box; width: 100%; }
 input, select, textarea, button { font: inherit; padding: .6rem; border-radius: .35rem; border: 1px solid var(--border); }
 button { background: #166534; color: #fff; cursor: pointer; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }

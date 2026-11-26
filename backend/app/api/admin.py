@@ -112,6 +112,8 @@ class ServerInput(BaseModel):
     api_key: SecretStr
     public_url: str | None = Field(default=None, max_length=2048)
     scan_interval_seconds: int = Field(default=60, ge=30, le=86400)
+    timeout_seconds: int = Field(default=15, ge=1, le=120)
+    verify_ssl: StrictBool = True
 
 
 class WebhookInput(BaseModel):
@@ -129,6 +131,9 @@ class ServerUpdateInput(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     scan_interval_seconds: int = Field(ge=30, le=86400)
     api_key: SecretStr | None = None
+    public_url: str | None = Field(default=None, max_length=2048)
+    timeout_seconds: int | None = Field(default=None, ge=1, le=120)
+    verify_ssl: StrictBool | None = None
 
 
 class WebhookUpdateInput(BaseModel):
@@ -666,6 +671,9 @@ def list_servers(request: Request, _auth: Annotated[AuthenticationService, Depen
                 "base_url": server.base_url,
                 "enabled": server.enabled,
                 "scan_interval_seconds": server.scan_interval_seconds,
+                "public_url": server.public_url,
+                "timeout_seconds": server.timeout_seconds,
+                "verify_ssl": server.verify_ssl,
             }
             for server in servers
         ]
@@ -683,6 +691,8 @@ def create_server(request: Request, payload: ServerInput, _auth: Annotated[Authe
                 api_key=payload.api_key.get_secret_value(),
                 public_url=payload.public_url,
                 scan_interval_seconds=payload.scan_interval_seconds,
+                timeout_seconds=payload.timeout_seconds,
+                verify_ssl=payload.verify_ssl,
             )
         )
     except ValueError as error:
@@ -718,6 +728,10 @@ def update_server(
                 name=payload.name,
                 scan_interval_seconds=payload.scan_interval_seconds,
                 api_key=payload.api_key.get_secret_value() if payload.api_key is not None else None,
+                public_url=payload.public_url,
+                update_public_url="public_url" in payload.model_fields_set,
+                timeout_seconds=payload.timeout_seconds,
+                verify_ssl=payload.verify_ssl,
             ),
         )
     except ValueError as error:

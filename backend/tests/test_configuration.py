@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.crypto import SecretCipher
 from app.database.base import Base
 from app.database.models import DeliveryMode, Library, NotificationTemplate, Server, Webhook
+from app.providers.events.bookorbit.factory import EncryptedBookOrbitClientFactory
 from app.schemas.bookorbit import BookOrbitLibrary
 from app.services.configuration import ConfigurationService, CreateServer, CreateTemplate, CreateWebhook
 
@@ -37,6 +38,33 @@ def test_server_credentials_are_encrypted_and_views_are_redacted(
         assert server is not None
         assert server.api_key_encrypted != "bok_secret"
     assert service.list_servers() == [view]
+
+
+@pytest.mark.asyncio
+async def test_source_client_uses_stored_timeout_and_tls_configuration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Saved connection options reach the short-lived client without exposing credentials."""
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'client-options.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(engine, expire_on_commit=False)
+    cipher = SecretCipher(Fernet.generate_key())
+    server = ConfigurationService(factory, cipher).create_server(
+        CreateServer(name="Source", base_url="https://books.example", api_key="fixture-key", timeout_seconds=45, verify_ssl=False)
+    )
+    observed = {}
+
+    class FakeClient:
+        def __init__(self, base_url, api_key, *, timeout_seconds, verify_ssl):
+            observed.update(base_url=base_url, api_key=api_key, timeout=timeout_seconds, verify=verify_ssl)
+
+        async def aclose(self):
+            observed["closed"] = True
+
+    monkeypatch.setattr("app.providers.events.bookorbit.factory.BookOrbitClient", FakeClient)
+    async with EncryptedBookOrbitClientFactory(factory, cipher).connect(server.id):
+        assert observed == {"base_url": "https://books.example", "api_key": "fixture-key", "timeout": 45, "verify": False}
+    assert observed["closed"] is True
+    engine.dispose()
 
 
 def test_library_sync_routing_and_template_assignment(

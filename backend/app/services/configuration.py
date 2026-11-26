@@ -56,6 +56,10 @@ class UpdateServer:
     name: str
     scan_interval_seconds: int
     api_key: str | None = None
+    public_url: str | None = None
+    update_public_url: bool = False
+    timeout_seconds: int | None = None
+    verify_ssl: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +168,9 @@ class ConfigurationService:
         name = _required_text(command.name, "Server name", 120)
         if not 30 <= command.scan_interval_seconds <= 86_400:
             raise ValueError("Scan interval must be between 30 seconds and 24 hours")
+        if command.timeout_seconds is not None and not 1 <= command.timeout_seconds <= 120:
+            raise ValueError("Connection timeout must be between 1 and 120 seconds")
+        public_url = _normalize_http_url(command.public_url, "Public BookOrbit URL") if command.public_url else None
         key = self._cipher.encrypt(_required_text(command.api_key, "BookOrbit API key", 512)) if command.api_key is not None else None
         with self._session_factory() as session, session.begin():
             server = session.get(Server, server_id)
@@ -171,6 +178,12 @@ class ConfigurationService:
                 raise ValueError("Server does not exist")
             server.name = name
             server.scan_interval_seconds = command.scan_interval_seconds
+            if command.update_public_url:
+                server.public_url = public_url
+            if command.timeout_seconds is not None:
+                server.timeout_seconds = command.timeout_seconds
+            if command.verify_ssl is not None:
+                server.verify_ssl = command.verify_ssl
             if key is not None:
                 server.api_key_encrypted = key
             return _server_view(server)

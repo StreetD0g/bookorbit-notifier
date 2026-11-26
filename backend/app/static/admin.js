@@ -86,6 +86,8 @@ Object.assign(messages.de, {scanHistory: "Scan-Protokoll", scanHistoryHelp: "Erg
 Object.assign(messages.en, {scanHistory: "Scan history", scanHistoryHelp: "Results of individual library scans in UTC. Connection details and error messages are not shown.", scanFrom: "Completed from (UTC)", scanTo: "Completed through (UTC)", scanPages: "Scan history pages", scanStarted: "Started", scanCompleted: "Completed", scanSeen: "Media seen", scanAdded: "Newly recorded", noScans: "No scans match these filters."});
 Object.assign(messages.de, {latestArrivals: "Zuletzt erkannte Medien", latestArrivalsHelp: "Nur erkannte Neuzugänge; die stille Ersterfassung ist nicht enthalten.", allArrivals: "Alle Neuzugänge anzeigen"});
 Object.assign(messages.en, {latestArrivals: "Recently detected media", latestArrivalsHelp: "Detected arrivals only; the silent initial baseline is excluded.", allArrivals: "Show all arrivals"});
+Object.assign(messages.de, {connectionSettings: "Verbindungseinstellungen", publicUrl: "Öffentliche Server-URL (optional)", connectionTimeout: "Verbindungs-Timeout in Sekunden", verifySsl: "TLS-Zertifikat prüfen", publicUrlHelp: "Die öffentliche URL wird gespeichert; direkte Buchlinks werden noch nicht erzeugt.", verifySslHelp: "Ohne Zertifikatsprüfung kann die Serveridentität nicht überprüft werden."});
+Object.assign(messages.en, {connectionSettings: "Connection settings", publicUrl: "Public server URL (optional)", connectionTimeout: "Connection timeout in seconds", verifySsl: "Verify TLS certificate", publicUrlHelp: "The public URL is stored; direct book links are not generated yet.", verifySslHelp: "Without certificate verification, the server identity cannot be verified."});
 messages.de.loadCover = "Cover laden";
 messages.en.loadCover = "Load cover";
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
@@ -580,12 +582,18 @@ function renderManagement() {
     function field(labelText, type, initial) { const label = document.createElement("label"), input = document.createElement("input"); label.textContent = labelText; input.type = type; input.value = initial; label.append(input); form.append(label); return input; }
     const name = field(strings().name, "text", server.name); name.maxLength = 120; name.required = true;
     const interval = field(strings().interval, "number", String(server.scan_interval_seconds)); interval.min = "30"; interval.max = "86400"; interval.required = true;
+    const publicUrl = field(strings().publicUrl, "url", server.public_url || ""); publicUrl.maxLength = 2048;
+    const timeout = field(strings().connectionTimeout, "number", String(server.timeout_seconds)); timeout.min = "1"; timeout.max = "120"; timeout.required = true;
+    const verifyLabel = document.createElement("label"), verify = document.createElement("input"); verify.type = "checkbox"; verify.checked = server.verify_ssl;
+    verifyLabel.append(verify, document.createTextNode(" " + strings().verifySsl)); form.append(verifyLabel);
+    const publicHelp = document.createElement("p"); publicHelp.textContent = strings().publicUrlHelp; form.append(publicHelp);
+    const verifyHelp = document.createElement("p"); verifyHelp.textContent = strings().verifySslHelp; form.append(verifyHelp);
     const key = field(strings().replaceKey, "password", ""); key.autocomplete = "off";
     const save = document.createElement("button"); save.type = "submit"; save.textContent = strings().saveChanges; form.append(save);
     form.addEventListener("submit", async event => {
       event.preventDefault(); save.disabled = true;
       try {
-        await call("/servers/" + server.id, mutationOptions({name: name.value, scan_interval_seconds: Number(interval.value), api_key: key.value || null}));
+        await call("/servers/" + server.id, mutationOptions({name: name.value, scan_interval_seconds: Number(interval.value), api_key: key.value || null, public_url: publicUrl.value || null, timeout_seconds: Number(timeout.value), verify_ssl: verify.checked}));
         try { await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().refreshFailed; }
       } catch { message.textContent = strings().failed; } finally { key.value = ""; save.disabled = false; }
     });
@@ -760,7 +768,8 @@ document.querySelector("#refresh").addEventListener("click", async () => {
 document.querySelector("#server-form").addEventListener("submit", async event => {
   event.preventDefault();
   const name = document.querySelector("#server-name"), url = document.querySelector("#server-url"), key = document.querySelector("#server-key");
-  try { await call("/servers", {...mutationOptions({name: name.value, base_url: url.value, api_key: key.value}), method: "POST"}); name.value = ""; url.value = ""; await refresh(); message.textContent = strings().configuredOk; }
+  const publicUrl = document.querySelector("#server-public-url"), interval = document.querySelector("#server-interval"), timeout = document.querySelector("#server-timeout"), verify = document.querySelector("#server-verify-ssl");
+  try { await call("/servers", {...mutationOptions({name: name.value, base_url: url.value, api_key: key.value, public_url: publicUrl.value || null, scan_interval_seconds: Number(interval.value), timeout_seconds: Number(timeout.value), verify_ssl: verify.checked}), method: "POST"}); name.value = ""; url.value = ""; publicUrl.value = ""; interval.value = "60"; timeout.value = "15"; verify.checked = true; await refresh(); message.textContent = strings().configuredOk; }
   catch { message.textContent = strings().failed; } finally { key.value = ""; }
 });
 document.querySelector("#webhook-form").addEventListener("submit", async event => {

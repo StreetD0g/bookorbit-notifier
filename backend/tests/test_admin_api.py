@@ -355,6 +355,45 @@ def test_preview_renders_verified_variables_and_requires_csrf(client) -> None:
     )
 
 
+def test_server_connection_settings_are_validated_and_backward_compatible(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, _engine = client
+    monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    csrf = setup_and_login(http)
+    headers = {"origin": ORIGIN, "x-csrf-token": csrf}
+    create = {
+        "name": "Source",
+        "base_url": "https://books.example",
+        "api_key": "key-secret",
+        "public_url": "https://public.example/",
+        "timeout_seconds": 30,
+        "verify_ssl": False,
+    }
+    result = http.post("/api/v1/admin/servers", headers=headers, json=create)
+    assert result.status_code == 201 and "key-secret" not in result.text
+    server_id = result.json()["id"]
+    server = http.get("/api/v1/admin/servers").json()[0]
+    assert (server["public_url"], server["timeout_seconds"], server["verify_ssl"]) == ("https://public.example", 30, False)
+    update = {"name": "Source", "scan_interval_seconds": 60}
+    assert http.put(f"/api/v1/admin/servers/{server_id}", headers=headers, json=update).status_code == 200
+    server = http.get("/api/v1/admin/servers").json()[0]
+    assert (server["public_url"], server["timeout_seconds"], server["verify_ssl"]) == ("https://public.example", 30, False)
+    update.update({"public_url": None, "timeout_seconds": 20, "verify_ssl": True})
+    assert http.put(f"/api/v1/admin/servers/{server_id}", headers=headers, json=update).status_code == 200
+    server = http.get("/api/v1/admin/servers").json()[0]
+    assert (server["public_url"], server["timeout_seconds"], server["verify_ssl"]) == (None, 20, True)
+    assert http.put(f"/api/v1/admin/servers/{server_id}", headers={"origin": ORIGIN}, json=update).status_code == 401
+    assert (
+        http.put(
+            f"/api/v1/admin/servers/{server_id}", headers=headers, json={**update, "public_url": "https://user:password@example.com"}
+        ).status_code
+        == 400
+    )
+    assert http.put(f"/api/v1/admin/servers/{server_id}", headers=headers, json={**update, "timeout_seconds": 0}).status_code == 422
+    assert http.put(f"/api/v1/admin/servers/{server_id}", headers=headers, json={**update, "verify_ssl": "false"}).status_code == 422
+    assert "key-secret" not in http.get("/api/v1/admin/servers").text
+
+
 def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(client, monkeypatch: pytest.MonkeyPatch) -> None:
     http, engine = client
     monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())
