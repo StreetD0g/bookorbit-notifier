@@ -26,6 +26,7 @@ from app.queue.worker import (
 )
 from app.services.authentication import AuthenticationService
 from app.services.configuration import ConfigurationService, CreateServer, CreateTemplate, CreateWebhook, UpdateServer, UpdateWebhook
+from app.services.dashboard import DashboardService
 from app.services.notifications import NotificationAdministrationService
 from app.services.sender_profiles import SenderProfileService
 from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES
@@ -273,6 +274,13 @@ def summary(request: Request, _auth: Annotated[AuthenticationService, Depends(_a
     """Return queue counts without source or destination credentials."""
 
     return NotificationAdministrationService(request.app.state.session_factory).summary()
+
+
+@router.get("/dashboard")
+def dashboard(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> dict:
+    """Return local inventory and event aggregates without claiming live source status."""
+
+    return DashboardService(request.app.state.session_factory).summary()
 
 
 @router.get("/notifications")

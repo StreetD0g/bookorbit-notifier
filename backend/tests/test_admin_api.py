@@ -56,6 +56,7 @@ def setup_and_login(client: TestClient) -> str:
 def test_setup_login_cookie_csrf_and_logout(client) -> None:
     http, _engine = client
     assert http.get("/api/v1/admin/notifications/summary").status_code == 401
+    assert http.get("/api/v1/admin/dashboard").status_code == 401
     assert http.get("/admin").status_code == 200
     assert "frame-ancestors 'none'" in http.get("/admin").headers["content-security-policy"]
     assert http.get("/admin-assets/admin.js").status_code == 200
@@ -76,6 +77,7 @@ def test_setup_login_cookie_csrf_and_logout(client) -> None:
         == 400
     )
     assert http.get("/api/v1/admin/notifications/summary").json()["queued"] == 0
+    assert http.get("/api/v1/admin/dashboard").json()["book_count"] == 0
     assert http.post("/api/v1/admin/logout", headers={"origin": ORIGIN}).status_code == 401
     assert http.post("/api/v1/admin/logout", headers={"origin": "https://evil.example", "x-csrf-token": csrf}).status_code == 403
     assert http.post("/api/v1/admin/logout", headers={"origin": ORIGIN, "x-csrf-token": csrf}).status_code == 200

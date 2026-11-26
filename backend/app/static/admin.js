@@ -33,7 +33,10 @@ Object.assign(messages.de, {changePassword: "Passwort ändern", currentPassword:
 Object.assign(messages.en, {changePassword: "Change password", currentPassword: "Current password", repeatPassword: "Repeat new password", passwordSessions: "All sessions will be signed out after the change.", passwordMismatch: "The new passwords do not match.", passwordChanged: "Password changed. Please sign in again."});
 Object.assign(messages.de, {arrivals: "Neuzugänge", arrivalsHelp: "Erkannte Neuzugänge; die stille Ersterfassung ist nicht enthalten.", arrivalsServer: "Server", arrivalsLibrary: "Bibliothek", all: "Alle", noArrivals: "Keine Neuzugänge für diese Auswahl.", eventStatus: "Ereignisstatus", deliveryStates: "Zustellstatus"});
 Object.assign(messages.en, {arrivals: "New arrivals", arrivalsHelp: "Detected arrivals; the silent initial baseline is excluded.", arrivalsServer: "Server", arrivalsLibrary: "Library", all: "All", noArrivals: "No arrivals match this selection.", eventStatus: "Event status", deliveryStates: "Delivery status"});
+Object.assign(messages.de, {overview: "Übersicht", utcNote: "Zeiträume beziehen sich auf UTC. Der Serverstatus zeigt die Konfiguration, keine Live-Erreichbarkeit.", library_count: "Bibliotheken", monitored_count: "Überwachte Bibliotheken", book_count: "Bekannte Medien", arrivals_today: "Neuzugänge heute", arrivals_week: "Neuzugänge diese Woche", arrivals_month: "Neuzugänge diesen Monat", last_successful_scan: "Letzter erfolgreicher Scan", configuredServers: "Aktive / konfigurierte Server"});
+Object.assign(messages.en, {overview: "Overview", utcNote: "Periods use UTC. Server status describes configuration, not live connectivity.", library_count: "Libraries", monitored_count: "Monitored libraries", book_count: "Known media", arrivals_today: "Arrivals today", arrivals_week: "Arrivals this week", arrivals_month: "Arrivals this month", last_successful_scan: "Last successful scan", configuredServers: "Enabled / configured servers"});
 let counts = null;
+let overview = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
 let previewRequest = 0, previewTimer;
@@ -47,6 +50,7 @@ function translate() {
   document.documentElement.lang = language.value;
   document.querySelectorAll("[data-text]").forEach(element => { element.textContent = strings()[element.dataset.text]; });
   if (counts) renderCounts(counts);
+  if (overview) renderOverview(overview);
   renderManagement();
   renderDeliveries();
   populateTemplateSelector();
@@ -129,6 +133,7 @@ async function selectScope() {
 }
 async function refresh() {
   counts = await call("/notifications/summary");
+  overview = await call("/dashboard");
   scopes = await call("/profile-scopes");
   [servers, webhooks, libraries, deliveries, templates] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries"), call("/notifications"), call("/templates")]);
   populateArrivalFilters();
@@ -145,8 +150,19 @@ async function refresh() {
   await selectScope();
   queuePreview();
   renderCounts(counts);
+  renderOverview(overview);
   authPanel.hidden = true;
   dashboard.hidden = false;
+}
+function renderOverview(data) {
+  const list = document.querySelector("#overview-counts"); list.replaceChildren();
+  for (const key of ["library_count", "monitored_count", "book_count", "arrivals_today", "arrivals_week", "arrivals_month", "last_successful_scan"]) {
+    const label = document.createElement("dt"), value = document.createElement("dd");
+    label.textContent = strings()[key]; value.textContent = data[key] ?? "—"; list.append(label, value);
+  }
+  const label = document.createElement("dt"), value = document.createElement("dd");
+  label.textContent = strings().configuredServers; value.textContent = data.servers.filter(server => server.enabled).length + " / " + data.servers.length;
+  list.append(label, value);
 }
 function fillFilter(select, entries, previous) {
   select.replaceChildren();
