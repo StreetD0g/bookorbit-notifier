@@ -1,5 +1,12 @@
 # BookOrbit Notifier
 
+> [!WARNING]
+> Security Notice – Vibe-Coded Project
+>
+> This project was developed with the assistance of artificial intelligence and has not undergone a comprehensive security review. Security vulnerabilities, programming errors, data loss, and unexpected behavior cannot be ruled out.
+>
+> Use this software at your own risk. Deployment in production, publicly accessible, or security-critical environments is strongly discouraged without a prior independent security review.
+
 BookOrbit Notifier is a planned self-hosted, read-only service that detects new media in one or more [BookOrbit](https://github.com/bookorbit/bookorbit) instances and sends configurable Discord webhook notifications.
 
 The project is independent from BookOrbit and Discord. BookOrbit's REST API is not guaranteed as a stable third-party interface; see [the compatibility research](docs/BOOKORBIT_API.md) before deployment.
