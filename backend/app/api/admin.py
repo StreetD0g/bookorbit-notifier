@@ -4,7 +4,7 @@ from hmac import compare_digest
 from typing import Annotated
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field, SecretStr, StrictBool
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -195,6 +195,18 @@ def summary(request: Request, _auth: Annotated[AuthenticationService, Depends(_a
     """Return queue counts without source or destination credentials."""
 
     return NotificationAdministrationService(request.app.state.session_factory).summary()
+
+
+@router.get("/notifications")
+def list_notifications(
+    request: Request,
+    _auth: Annotated[AuthenticationService, Depends(_authenticated)],
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    """List redacted delivery rows in bounded pages."""
+
+    return NotificationAdministrationService(request.app.state.session_factory).list_deliveries(limit=limit, offset=offset)
 
 
 @router.get("/notifications/{queue_item_id}/history")

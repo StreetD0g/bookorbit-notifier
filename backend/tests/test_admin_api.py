@@ -105,6 +105,10 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
         session.commit()
         item_id = item.id
     path = f"/api/v1/admin/notifications/{item_id}/retry"
+    listing = http.get("/api/v1/admin/notifications")
+    assert listing.status_code == 200 and listing.json()[0]["book_title"] == "New"
+    assert "encrypted" not in listing.text
+    assert http.get("/api/v1/admin/notifications?limit=101").status_code == 422
     assert http.post(path, headers={"origin": ORIGIN}, json={"confirm_sent_resend": True}).status_code == 401
     headers = {"origin": ORIGIN, "x-csrf-token": csrf}
     assert http.post(path, headers=headers, json={}).status_code == 400

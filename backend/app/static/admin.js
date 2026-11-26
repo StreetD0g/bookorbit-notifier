@@ -17,17 +17,21 @@ Object.assign(messages.de, {previewTitle: "Discord-Live-Vorschau", previewHint: 
 Object.assign(messages.en, {previewTitle: "Discord live preview", previewHint: "Sample data; preview changes are not saved or sent.", embedTitle: "Title", embedDescription: "Description", embedFooter: "Footer", variable: "Variable", insertVariable: "Insert into description", previewInvalid: "Invalid template. Please check the variables.", previewOriginal: "Original / inherited"});
 Object.assign(messages.de, {servers: "BookOrbit-Server", name: "Name", serverUrl: "Server-URL", serverKey: "BookOrbit-Leseschlüssel", addServer: "Server hinzufügen", webhooks: "Discord-Webhooks", webhookUrl: "Webhook-URL", addWebhook: "Webhook hinzufügen", libraries: "Bibliotheken", libraryHelp: "Bibliotheken werden über den jeweiligen Server aktualisiert. Die erste Erfassung erzeugt keine Benachrichtigungen.", syncLibraries: "Bibliotheken aktualisieren", disable: "Deaktivieren", enable: "Aktivieren", monitored: "Überwachen", saveRouting: "Zuordnung speichern", configuredOk: "Konfiguration gespeichert.", syncOk: "Bibliotheken aktualisiert.", destination: "Discord-Ziele"});
 Object.assign(messages.en, {servers: "BookOrbit servers", name: "Name", serverUrl: "Server URL", serverKey: "BookOrbit read-only key", addServer: "Add server", webhooks: "Discord webhooks", webhookUrl: "Webhook URL", addWebhook: "Add webhook", libraries: "Libraries", libraryHelp: "Refresh libraries from their server. The initial baseline does not generate notifications.", syncLibraries: "Refresh libraries", disable: "Disable", enable: "Enable", monitored: "Monitor", saveRouting: "Save routing", configuredOk: "Configuration saved.", syncOk: "Libraries refreshed.", destination: "Discord destinations"});
+Object.assign(messages.de, {history: "Zustellhistorie", historyHelp: "Die neuesten 50 Zustellungen. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht.", attempts: "Versuche", detectedAt: "Erkannt", sentAt: "Gesendet", lastError: "Letzter Fehler", discordId: "Discord-Nachrichten-ID", retryAction: "Erneut senden", resendConfirm: "Diese Nachricht wurde bereits gesendet. Wirklich eine weitere Discord-Nachricht senden?", showHistory: "Versuche anzeigen"});
+Object.assign(messages.en, {history: "Delivery history", historyHelp: "The latest 50 deliveries. Resending a delivered notification creates another Discord message.", attempts: "Attempts", detectedAt: "Detected", sentAt: "Sent", lastError: "Last error", discordId: "Discord message ID", retryAction: "Retry", resendConfirm: "This notification was already sent. Send another Discord message?", showHistory: "Show attempts"});
 let counts = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
 let previewRequest = 0, previewTimer;
 let servers = [], webhooks = [], libraries = [];
+let deliveries = [];
 function strings() { return messages[language.value]; }
 function translate() {
   document.documentElement.lang = language.value;
   document.querySelectorAll("[data-text]").forEach(element => { element.textContent = strings()[element.dataset.text]; });
   if (counts) renderCounts(counts);
   renderManagement();
+  renderDeliveries();
   updatePreviewSender();
 }
 function cookie(name) {
@@ -106,8 +110,9 @@ async function selectScope() {
 async function refresh() {
   counts = await call("/notifications/summary");
   scopes = await call("/profile-scopes");
-  [servers, webhooks, libraries] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries")]);
+  [servers, webhooks, libraries, deliveries] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries"), call("/notifications")]);
   renderManagement();
+  renderDeliveries();
   const variables = await call("/template-variables");
   const variableSelect = document.querySelector("#preview-variable");
   variableSelect.replaceChildren();
@@ -120,12 +125,42 @@ async function refresh() {
   authPanel.hidden = true;
   dashboard.hidden = false;
 }
+function renderDeliveries() {
+  const list = document.querySelector("#delivery-list"); list.replaceChildren();
+  for (const delivery of deliveries) {
+    const card = document.createElement("div"); card.className = "library-card";
+    const heading = document.createElement("h3"); heading.textContent = delivery.book_title || "—"; card.append(heading);
+    const source = document.createElement("p"); source.textContent = [delivery.server_name, delivery.library_name, delivery.webhook_name].join(" · "); card.append(source);
+    const state = document.createElement("p"); state.textContent = delivery.status + " · " + strings().attempts + ": " + delivery.attempt_count; card.append(state);
+    for (const [label, value] of [[strings().detectedAt, delivery.detected_at], [strings().sentAt, delivery.sent_at], [strings().lastError, delivery.last_error], [strings().discordId, delivery.discord_message_id]]) {
+      if (value) { const line = document.createElement("p"); line.textContent = label + ": " + value; card.append(line); }
+    }
+    const details = document.createElement("ul"); details.hidden = true; card.append(details);
+    const show = document.createElement("button"); show.type = "button"; show.textContent = strings().showHistory;
+    show.addEventListener("click", async () => {
+      try {
+        const entries = await call("/notifications/" + delivery.id + "/history"); details.replaceChildren();
+        for (const entry of entries) { const row = document.createElement("li"); row.textContent = [entry.attempted_at, entry.status, entry.error, entry.discord_message_id].filter(Boolean).join(" · "); details.append(row); }
+        details.hidden = false;
+      } catch { message.textContent = strings().failed; }
+    });
+    card.append(show);
+    if (["FAILED", "RETRY", "SENT"].includes(delivery.status)) {
+      card.append(actionButton(strings().retryAction, async () => {
+        const resend = delivery.status === "SENT";
+        if (resend && !window.confirm(strings().resendConfirm)) return false;
+        await call("/notifications/" + delivery.id + "/retry", {...mutationOptions({confirm_sent_resend: resend}), method: "POST"});
+      }));
+    }
+    list.append(card);
+  }
+}
 function mutationOptions(body) {
   return {method: "PUT", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify(body)};
 }
 function actionButton(label, action) {
   const button = document.createElement("button"); button.type = "button"; button.textContent = label;
-  button.addEventListener("click", async () => { try { await action(); await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().failed; } });
+  button.addEventListener("click", async () => { try { if (await action() === false) return; await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().failed; } });
   return button;
 }
 function renderManagement() {

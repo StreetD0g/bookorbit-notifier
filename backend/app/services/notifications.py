@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.database.models import NotificationHistory, NotificationQueueItem, QueueStatus
+from app.database.models import Book, Event, EventStatus, Library, NotificationHistory, NotificationQueueItem, QueueStatus, Server, Webhook
 
 type SessionFactory = Callable[[], Session]
 
@@ -37,6 +37,23 @@ class NotificationHistoryEntry:
     status: QueueStatus
     attempted_at: datetime
     error: str | None
+    discord_message_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationListEntry:
+    """One safe destination record for the administrator history list."""
+
+    id: int
+    book_title: str | None
+    server_name: str
+    library_name: str
+    webhook_name: str
+    detected_at: datetime
+    sent_at: datetime | None
+    status: QueueStatus
+    attempt_count: int
+    last_error: str | None
     discord_message_id: str | None
 
 
@@ -87,6 +104,40 @@ class NotificationAdministrationService:
             for row in rows
         ]
 
+    def list_deliveries(self, *, limit: int = 50, offset: int = 0) -> list[NotificationListEntry]:
+        """Page newest queue records without serializing source or webhook credentials."""
+
+        if not 1 <= limit <= 100 or offset < 0:
+            raise ValueError("Invalid notification pagination")
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(NotificationQueueItem, Book.title, Server.name, Library.name, Webhook.name, Event.detected_at)
+                .join(Event, NotificationQueueItem.event_id == Event.id)
+                .join(Book, Event.book_id == Book.id)
+                .join(Server, Event.server_id == Server.id)
+                .join(Library, Event.library_id == Library.id)
+                .join(Webhook, NotificationQueueItem.webhook_id == Webhook.id)
+                .order_by(NotificationQueueItem.id.desc())
+                .limit(limit)
+                .offset(offset)
+            ).all()
+            return [
+                NotificationListEntry(
+                    id=item.id,
+                    book_title=title,
+                    server_name=server,
+                    library_name=library,
+                    webhook_name=webhook,
+                    detected_at=detected,
+                    sent_at=item.sent_at,
+                    status=item.status,
+                    attempt_count=item.attempt_count,
+                    last_error=item.last_error,
+                    discord_message_id=item.discord_message_id,
+                )
+                for item, title, server, library, webhook, detected in rows
+            ]
+
     def retry(self, queue_item_id: int, *, confirm_sent_resend: bool = False, now: datetime | None = None) -> None:
         """Request one target retry; successful prior delivery needs explicit confirmation."""
 
@@ -98,12 +149,20 @@ class NotificationAdministrationService:
                     raise ValueError("Notification queue item does not exist")
                 if item.status == QueueStatus.SENDING:
                     raise ValueError("Notification is currently being sent")
+                if item.status not in {QueueStatus.FAILED, QueueStatus.RETRY, QueueStatus.SENT}:
+                    raise ValueError("Only failed, retrying or sent notifications can be retried")
                 if item.status == QueueStatus.SENT and not confirm_sent_resend:
                     raise ValueError("Resending a successful notification requires explicit confirmation")
                 item.status = QueueStatus.READY
+                # A deliberate manual retry gets a fresh attempt budget; immutable
+                # history retains prior attempts and successful message IDs.
+                item.attempt_count = 0
                 item.next_retry_at = timestamp
                 item.sending_started_at = None
                 item.last_error = None
+                item.sent_at = None
+                item.discord_message_id = None
+                item.event.status = EventStatus.READY
                 session.add(
                     NotificationHistory(
                         queue_item_id=item.id,

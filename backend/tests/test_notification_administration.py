@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database.base import Base
-from app.database.models import Event, Library, NotificationQueueItem, QueueStatus, Server, Webhook
+from app.database.models import Event, EventStatus, Library, NotificationQueueItem, QueueStatus, Server, Webhook
 from app.queue.state import claim_due_deliveries, mark_event_ready, record_delivery_success
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
 from app.services.notifications import NotificationAdministrationService
@@ -82,3 +82,40 @@ def test_summary_counts_persistent_delivery_state(sent_notification: tuple[sessi
     assert summary.sent == 1
     assert summary.failed == 0
     assert summary.retry == 0
+
+
+def test_history_list_is_redacted_and_manual_retry_restarts_failed_attempt_budget(
+    sent_notification: tuple[sessionmaker[Session], NotificationQueueItem],
+) -> None:
+    factory, original = sent_notification
+    service = NotificationAdministrationService(factory)
+    entry = service.list_deliveries(limit=1)[0]
+    assert entry.book_title == "New" and entry.server_name == "Source" and entry.webhook_name == "Target"
+    assert not hasattr(entry, "api_key_encrypted") and not hasattr(entry, "url_encrypted")
+    with factory.begin() as session:
+        item = session.get(NotificationQueueItem, original.id)
+        assert item is not None
+        item.status = QueueStatus.FAILED
+        item.attempt_count = 8
+        item.event.status = EventStatus.FAILED
+    service.retry(original.id)
+    with factory() as session:
+        item = session.get(NotificationQueueItem, original.id)
+        assert item is not None and item.status == QueueStatus.READY
+        assert item.attempt_count == 0 and item.event.status == EventStatus.READY
+        assert item.sent_at is None and item.discord_message_id is None
+    assert service.history(original.id)[0].discord_message_id == "message-1"
+
+
+@pytest.mark.parametrize("status", [QueueStatus.WAITING_FOR_METADATA, QueueStatus.QUEUED, QueueStatus.READY, QueueStatus.SKIPPED])
+def test_manual_retry_does_not_bypass_pending_state(
+    sent_notification: tuple[sessionmaker[Session], NotificationQueueItem],
+    status: QueueStatus,
+) -> None:
+    factory, original = sent_notification
+    with factory.begin() as session:
+        item = session.get(NotificationQueueItem, original.id)
+        assert item is not None
+        item.status = status
+    with pytest.raises(ValueError, match="Only failed"):
+        NotificationAdministrationService(factory).retry(original.id)
