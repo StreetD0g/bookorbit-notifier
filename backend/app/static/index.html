@@ -111,8 +111,11 @@
       </section>
       <section class="management" aria-labelledby="history-heading">
         <h2 id="history-heading" data-text="history">Zustellhistorie</h2>
-        <p data-text="historyHelp">Die neuesten 50 Zustellungen. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht.</p>
+        <p data-text="historyHelp">Zustellungen in Seiten zu je 50. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht.</p>
+        <label for="history-status" data-text="deliveryStates">Zustellstatus</label>
+        <select id="history-status"><option value="" data-text="all">Alle</option><option value="WAITING_FOR_METADATA">WAITING_FOR_METADATA</option><option value="READY">READY</option><option value="QUEUED">QUEUED</option><option value="SENDING">SENDING</option><option value="SENT">SENT</option><option value="RETRY">RETRY</option><option value="FAILED">FAILED</option><option value="SKIPPED">SKIPPED</option></select>
         <div id="delivery-list"></div>
+        <nav aria-label="Zustellungen Seiten"><button type="button" id="history-previous" data-text="previous">Zurück</button><span id="history-page" aria-live="polite"></span><button type="button" id="history-next" data-text="next">Weiter</button></nav>
       </section>
       <h2 data-text="senderProfile">Absenderprofil</h2>
       <label for="profile-scope" data-text="profileScope">Konfigurationsebene</label>

@@ -153,6 +153,10 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
     path = f"/api/v1/admin/notifications/{item_id}/retry"
     listing = http.get("/api/v1/admin/notifications")
     assert listing.status_code == 200 and listing.json()[0]["book_title"] == "New"
+    assert len(http.get("/api/v1/admin/notifications?delivery_status=SENT").json()) == 1
+    assert http.get("/api/v1/admin/notifications?delivery_status=FAILED").json() == []
+    assert http.get("/api/v1/admin/notifications?offset=1").json() == []
+    assert http.get("/api/v1/admin/notifications?delivery_status=UNKNOWN").status_code == 422
     assert "encrypted" not in listing.text
     assert http.get("/api/v1/admin/notifications?limit=101").status_code == 422
     assert http.post(path, headers={"origin": ORIGIN}, json={"confirm_sent_resend": True}).status_code == 401

@@ -104,23 +104,23 @@ class NotificationAdministrationService:
             for row in rows
         ]
 
-    def list_deliveries(self, *, limit: int = 50, offset: int = 0) -> list[NotificationListEntry]:
+    def list_deliveries(self, *, limit: int = 50, offset: int = 0, status: QueueStatus | None = None) -> list[NotificationListEntry]:
         """Page newest queue records without serializing source or webhook credentials."""
 
         if not 1 <= limit <= 100 or offset < 0:
             raise ValueError("Invalid notification pagination")
         with self._session_factory() as session:
-            rows = session.execute(
+            query = (
                 select(NotificationQueueItem, Book.title, Server.name, Library.name, Webhook.name, Event.detected_at)
                 .join(Event, NotificationQueueItem.event_id == Event.id)
                 .join(Book, Event.book_id == Book.id)
                 .join(Server, Event.server_id == Server.id)
                 .join(Library, Event.library_id == Library.id)
                 .join(Webhook, NotificationQueueItem.webhook_id == Webhook.id)
-                .order_by(NotificationQueueItem.id.desc())
-                .limit(limit)
-                .offset(offset)
-            ).all()
+            )
+            if status is not None:
+                query = query.where(NotificationQueueItem.status == status)
+            rows = session.execute(query.order_by(NotificationQueueItem.id.desc()).limit(limit).offset(offset)).all()
             return [
                 NotificationListEntry(
                     id=item.id,

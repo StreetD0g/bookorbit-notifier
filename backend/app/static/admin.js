@@ -26,6 +26,8 @@ Object.assign(messages.de, {servers: "BookOrbit-Server", name: "Name", serverUrl
 Object.assign(messages.en, {servers: "BookOrbit servers", name: "Name", serverUrl: "Server URL", serverKey: "BookOrbit read-only key", addServer: "Add server", webhooks: "Discord webhooks", webhookUrl: "Webhook URL", addWebhook: "Add webhook", libraries: "Libraries", libraryHelp: "Refresh libraries from their server. The initial baseline does not generate notifications.", syncLibraries: "Refresh libraries", disable: "Disable", enable: "Enable", monitored: "Monitor", saveRouting: "Save routing", configuredOk: "Configuration saved.", syncOk: "Libraries refreshed.", destination: "Discord destinations"});
 Object.assign(messages.de, {history: "Zustellhistorie", historyHelp: "Die neuesten 50 Zustellungen. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht.", attempts: "Versuche", detectedAt: "Erkannt", sentAt: "Gesendet", lastError: "Letzter Fehler", discordId: "Discord-Nachrichten-ID", retryAction: "Erneut senden", resendConfirm: "Diese Nachricht wurde bereits gesendet. Wirklich eine weitere Discord-Nachricht senden?", showHistory: "Versuche anzeigen"});
 Object.assign(messages.en, {history: "Delivery history", historyHelp: "The latest 50 deliveries. Resending a delivered notification creates another Discord message.", attempts: "Attempts", detectedAt: "Detected", sentAt: "Sent", lastError: "Last error", discordId: "Discord message ID", retryAction: "Retry", resendConfirm: "This notification was already sent. Send another Discord message?", showHistory: "Show attempts"});
+Object.assign(messages.de, {historyHelp: "Zustellungen in Seiten zu je 50. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht."});
+Object.assign(messages.en, {historyHelp: "Deliveries in pages of 50. Resending a delivered notification creates another Discord message."});
 Object.assign(messages.de, {previewHint: "Die Vorschau zeigt Beispieldaten. Änderungen werden erst beim Speichern übernommen und nicht versendet.", templateSelect: "Vorlage", newTemplate: "Neue Vorlage", templateName: "Vorlagenname", saveTemplate: "Vorlage speichern", libraryTemplate: "Vorlage für diese Bibliothek", defaultTemplate: "Standardvorlage"});
 Object.assign(messages.en, {previewHint: "The preview shows sample data. Changes are only applied when saved and are not sent.", templateSelect: "Template", newTemplate: "New template", templateName: "Template name", saveTemplate: "Save template", libraryTemplate: "Template for this library", defaultTemplate: "Default template"});
 Object.assign(messages.de, {deliveryMode: "Versandmodus", modeSingle: "Einzeln", modeBatch: "Gebündelt", modeDaily: "Tägliche Zusammenfassung", batchSeconds: "Sammelzeit in Sekunden (30–86400)", dailyTime: "Uhrzeit der Zusammenfassung", timezone: "Zeitzone (IANA)", saveDelivery: "Versandmodus speichern", deliveryHint: "Bereits eingeplante Nachrichten behalten ihren Versandzeitpunkt."});
@@ -61,6 +63,7 @@ let profileRequest = 0;
 let previewRequest = 0, previewTimer;
 let servers = [], webhooks = [], libraries = [];
 let deliveries = [];
+let deliveryOffset = 0, deliveryRequest = 0;
 let templates = [];
 let arrivals = [];
 let arrivalsRequest = 0;
@@ -155,7 +158,8 @@ async function refresh() {
   counts = await call("/notifications/summary");
   overview = await call("/dashboard");
   scopes = await call("/profile-scopes");
-  [servers, webhooks, libraries, deliveries, templates] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries"), call("/notifications"), call("/templates")]);
+  [servers, webhooks, libraries, templates] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries"), call("/templates")]);
+  await loadDeliveries();
   populateArrivalFilters();
   await loadArrivals();
   populateTemplateSelector();
@@ -267,6 +271,9 @@ document.querySelector("#arrivals-previous").addEventListener("click", () => { a
 document.querySelector("#arrivals-next").addEventListener("click", () => { arrivalsOffset += 50; loadArrivals().catch(() => { message.textContent = strings().failed; }); });
 function renderDeliveries() {
   const list = document.querySelector("#delivery-list"); list.replaceChildren();
+  document.querySelector("#history-previous").disabled = deliveryOffset === 0;
+  document.querySelector("#history-next").disabled = deliveries.length < 50;
+  document.querySelector("#history-page").textContent = strings().page + " " + (Math.floor(deliveryOffset / 50) + 1);
   for (const delivery of deliveries) {
     const card = document.createElement("div"); card.className = "library-card";
     const heading = document.createElement("h3"); heading.textContent = delivery.book_title || "—"; card.append(heading);
@@ -295,6 +302,17 @@ function renderDeliveries() {
     list.append(card);
   }
 }
+async function loadDeliveries() {
+  const request = ++deliveryRequest, params = new URLSearchParams({offset: String(deliveryOffset)});
+  const status = document.querySelector("#history-status").value;
+  if (status) params.set("delivery_status", status);
+  const data = await call("/notifications?" + params.toString());
+  if (request !== deliveryRequest) return;
+  deliveries = data; renderDeliveries();
+}
+document.querySelector("#history-status").addEventListener("change", () => { deliveryOffset = 0; loadDeliveries().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#history-previous").addEventListener("click", () => { deliveryOffset = Math.max(0, deliveryOffset - 50); loadDeliveries().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#history-next").addEventListener("click", () => { deliveryOffset += 50; loadDeliveries().catch(() => { message.textContent = strings().failed; }); });
 function mutationOptions(body) {
   return {method: "PUT", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify(body)};
 }

@@ -22,7 +22,7 @@ Remote access requires an HTTPS origin; plain HTTP is accepted only for localhos
 
 Existing server URLs cannot be changed in place because existing library and book IDs belong to that source; create a new server configuration for another instance. Rotating a stored webhook URL requires explicit confirmation because pending deliveries will use the replacement destination. A manual scan is available only with the opt-in runtime enabled; it does not itself trigger an unrelated delivery pass.
 
-Per-library delivery modes can be changed in the library view. Changes apply to future scheduling decisions; queue entries already scheduled retain their existing due time. The delivery history displays the latest 50 records and allows explicit retries, with separate confirmation required for a successful prior delivery.
+Per-library delivery modes can be changed in the library view. Changes apply to future scheduling decisions; queue entries already scheduled retain their existing due time. The delivery history is paginated in groups of 50, supports a status filter, and allows explicit retries, with separate confirmation required for a successful prior delivery.
 
 The arrivals view displays detected new-book events in pages of 50 and supports filters for server, library, author, genre, format, language, UTC detection date and delivery status. It does not show the initial silent baseline. A detail view displays selected metadata and the most recent 200 delivery attempts; source file paths and credential fields are omitted. The optional cover button fetches JPEG, PNG or WebP through the authenticated BookOrbit client and serves it only to the authenticated administrator; it never exposes a source key or URL to the browser.
 

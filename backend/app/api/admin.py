@@ -303,10 +303,13 @@ def list_notifications(
     _auth: Annotated[AuthenticationService, Depends(_authenticated)],
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    delivery_status: QueueStatus | None = None,
 ):
     """List redacted delivery rows in bounded pages."""
 
-    return NotificationAdministrationService(request.app.state.session_factory).list_deliveries(limit=limit, offset=offset)
+    return NotificationAdministrationService(request.app.state.session_factory).list_deliveries(
+        limit=limit, offset=offset, status=delivery_status
+    )
 
 
 @router.get("/arrivals")
