@@ -24,6 +24,9 @@ dd { margin: 0; font-weight: 700; }
 .discord-embed::after { content: ""; display: block; clear: both; }
 .discord-embed img { float: right; width: 5rem; height: auto; margin: 0 0 .6rem .8rem; border-radius: .2rem; }
 .discord-embed p { white-space: pre-wrap; }
+.discord-embed dl { display: block; }
+.discord-embed dt { font-weight: 700; }
+.discord-embed dd { margin: 0 0 .6rem; font-weight: 400; }
 .management { padding: 1rem 0; border-bottom: 1px solid var(--rule); }
 .management li { margin: .5rem 0; }
 .management button { margin: .25rem; }

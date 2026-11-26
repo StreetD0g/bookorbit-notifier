@@ -244,7 +244,7 @@ def test_preview_renders_verified_variables_and_requires_csrf(client) -> None:
     result = http.post("/api/v1/admin/template-preview", headers=headers, json=payload)
     assert result.status_code == 200
     assert result.json()["title"] == "The Example Book (2024)"
-    assert result.json()["description"] == "Sam Example / 320 / 08:00 / 28800"
+    assert result.json()["description"] == "Sam Example / 320 / 08:00 h / 28800"
     styled = {**payload, "color": 0x123456, "metadata_fields": ["narrators", "isbn13", "page_count"]}
     rendered = http.post("/api/v1/admin/template-preview", headers=headers, json=styled)
     assert rendered.status_code == 200 and rendered.json()["color"] == 0x123456

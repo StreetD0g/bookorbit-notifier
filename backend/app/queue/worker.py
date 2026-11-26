@@ -188,7 +188,7 @@ def _template_values(book: Book, library_name: str, server_name: str) -> dict[st
 
 
 def _format_duration(value: object) -> str | None:
-    """Display whole minutes as HH:MM, or MM for durations under one hour."""
+    """Display whole minutes with the appropriate hour or minute unit."""
 
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
         return None
@@ -197,7 +197,7 @@ def _format_duration(value: object) -> str | None:
     except (ValueError, OverflowError):
         return None
     hours, minutes = divmod(minutes, 60)
-    return f"{hours:02d}:{minutes:02d}" if hours else f"{minutes:02d}"
+    return f"{hours:02d}:{minutes:02d} h" if hours else f"{minutes:02d} min"
 
 
 def _names(value: object) -> list[str]:
@@ -238,7 +238,8 @@ def render_embed(
             if available < 1:
                 break
             shown = _clip(value, available)
-            fields.append({"name": label, "value": shown, "inline": True})
+            # One Discord field per row avoids narrow columns beside a cover.
+            fields.append({"name": label, "value": shown, "inline": False})
             remaining -= len(label) + len(shown)
         if fields:
             embed["fields"] = fields

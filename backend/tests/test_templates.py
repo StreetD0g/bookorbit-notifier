@@ -60,8 +60,8 @@ def test_default_embed_builder_uses_library_template(tmp_path: Path) -> None:
         "color": 0x112233,
         "footer": {"text": "Source"},
         "fields": [
-            {"name": "Published Year", "value": "2024", "inline": True},
-            {"name": "Isbn13", "value": "9780000000000", "inline": True},
+            {"name": "Published Year", "value": "2024", "inline": False},
+            {"name": "Isbn13", "value": "9780000000000", "inline": False},
         ],
     }
     assert notification.cover_source == (1, 1)
@@ -122,13 +122,13 @@ def test_bookorbit_detail_and_card_variables_handle_narrators_and_missing_audio(
 @pytest.mark.parametrize(
     ("seconds", "expected"),
     [
-        (0, "00"),
-        (59, "00"),
-        (60, "01"),
-        (3599, "59"),
-        (3600, "01:00"),
-        (3660, "01:01"),
-        (360000, "100:00"),
+        (0, "00 min"),
+        (59, "00 min"),
+        (60, "01 min"),
+        (3599, "59 min"),
+        (3600, "01:00 h"),
+        (3660, "01:01 h"),
+        (360000, "100:00 h"),
         (None, None),
         (-1, None),
         (True, None),
