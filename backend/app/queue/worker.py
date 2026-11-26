@@ -15,7 +15,7 @@ from app.providers.notifications.discord.client import DiscordDeliveryError, Dis
 from app.queue.state import DeliveryClaim, claim_due_deliveries, record_delivery_failure, record_delivery_success, recover_stale_sends
 from app.schemas.bookorbit import CoverImage
 from app.services.sender_profiles import SenderProfileService
-from app.templates.safe import render_template
+from app.templates.safe import DEFAULT_SERIES_NUMBERED, DEFAULT_SERIES_UNNUMBERED, render_template, validate_series_format
 
 type SessionFactory = Callable[[], Session]
 
@@ -116,7 +116,13 @@ class DefaultEmbedBuilder:
             authors = ", ".join(book.authors_json)
             template = library.template if library.template and library.template.enabled else None
             if template is not None:
-                values = _template_values(book, library.name, book.server.name)
+                values = _template_values(
+                    book,
+                    library.name,
+                    book.server.name,
+                    series_numbered_template=template.series_numbered_template,
+                    series_unnumbered_template=template.series_unnumbered_template,
+                )
                 embed = render_embed(
                     template.title_template,
                     template.description_template,
@@ -138,7 +144,14 @@ class DefaultEmbedBuilder:
             )
 
 
-def _template_values(book: Book, library_name: str, server_name: str) -> dict[str, object]:
+def _template_values(
+    book: Book,
+    library_name: str,
+    server_name: str,
+    *,
+    series_numbered_template: str = DEFAULT_SERIES_NUMBERED,
+    series_unnumbered_template: str = DEFAULT_SERIES_UNNUMBERED,
+) -> dict[str, object]:
     """Map stored BookOrbit metadata into documented template variables only."""
 
     metadata = book.metadata_json
@@ -150,12 +163,22 @@ def _template_values(book: Book, library_name: str, server_name: str) -> dict[st
     narrators = _names(narrator_refs)
     files = metadata.get("files")
     files = files if isinstance(files, list) else []
+    series, series_index = metadata.get("seriesName"), metadata.get("seriesIndex")
+    validate_series_format(series_numbered_template)
+    validate_series_format(series_unnumbered_template)
+    series_present = isinstance(series, str) and bool(series.strip())
+    index_present = series_index is not None and not isinstance(series_index, bool) and bool(str(series_index).strip())
+    series_tag = ""
+    if series_present:
+        series_format = series_numbered_template if index_present else series_unnumbered_template
+        series_tag = render_template(series_format, {"series": series, "series_index": series_index})
     return {
         "title": book.title,
         "subtitle": metadata.get("subtitle"),
         "authors": book.authors_json,
-        "series": metadata.get("seriesName"),
-        "series_index": metadata.get("seriesIndex"),
+        "series": series,
+        "series_index": series_index,
+        "series_tag": series_tag,
         "library": library_name,
         "server": server_name,
         "genres": metadata.get("genres"),

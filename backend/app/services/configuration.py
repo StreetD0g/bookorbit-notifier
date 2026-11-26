@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session
 from app.core.crypto import SecretCipher
 from app.database.models import DeliveryMode, Library, NotificationTemplate, Server, Webhook
 from app.schemas.bookorbit import BookOrbitLibrary
-from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES, validate_template_syntax
+from app.templates.safe import (
+    ALLOWED_TEMPLATE_VARIABLES,
+    DEFAULT_SERIES_NUMBERED,
+    DEFAULT_SERIES_UNNUMBERED,
+    validate_series_format,
+    validate_template_syntax,
+)
 
 type SessionFactory = Callable[[], Session]
 
@@ -73,6 +79,8 @@ class CreateTemplate:
     color: int = 0x2F855A
     show_cover: bool = True
     metadata_fields: tuple[str, ...] = ()
+    series_numbered_template: str = DEFAULT_SERIES_NUMBERED
+    series_unnumbered_template: str = DEFAULT_SERIES_UNNUMBERED
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +206,8 @@ class ConfigurationService:
                     color=command.color,
                     show_cover=command.show_cover,
                     metadata_fields=list(command.metadata_fields),
+                    series_numbered_template=command.series_numbered_template,
+                    series_unnumbered_template=command.series_unnumbered_template,
                 )
                 session.add(template)
                 session.flush()
@@ -218,6 +228,8 @@ class ConfigurationService:
             template.color = command.color
             template.show_cover = command.show_cover
             template.metadata_fields = list(command.metadata_fields)
+            template.series_numbered_template = command.series_numbered_template
+            template.series_unnumbered_template = command.series_unnumbered_template
 
     def synchronize_libraries(self, server_id: int, source_libraries: Sequence[BookOrbitLibrary]) -> LibrarySyncResult:
         """Upsert accessible source libraries; absent source rows are never deleted automatically."""
@@ -329,6 +341,8 @@ def _validate_template(command: CreateTemplate) -> str:
     """Validate template fields consistently on both creation and update."""
 
     name = _required_text(command.name, "Template name", 120)
+    validate_series_format(command.series_numbered_template)
+    validate_series_format(command.series_unnumbered_template)
     for field_name, value, limit in (
         ("Title template", command.title_template, 512),
         ("Description template", command.description_template, 4000),

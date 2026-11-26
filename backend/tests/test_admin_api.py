@@ -245,6 +245,26 @@ def test_preview_renders_verified_variables_and_requires_csrf(client) -> None:
     assert result.status_code == 200
     assert result.json()["title"] == "The Example Book (2024)"
     assert result.json()["description"] == "Sam Example / 320 / 08:00 h / 28800"
+    series_preview = {
+        "title": "{{series_tag}}",
+        "description": "",
+        "series_numbered_template": "Part {{series_index}} of {{series}}",
+        "series_unnumbered_template": "Reihe: {{series}}",
+    }
+    assert http.post("/api/v1/admin/template-preview", headers=headers, json=series_preview).json()["title"] == "Part 2 of Example series"
+    assert (
+        http.post("/api/v1/admin/template-preview", headers=headers, json={**series_preview, "sample_series": "unnumbered"}).json()["title"]
+        == "Reihe: Example series"
+    )
+    assert (
+        http.post("/api/v1/admin/template-preview", headers=headers, json={**series_preview, "sample_series": "none"}).json()["title"] == ""
+    )
+    assert (
+        http.post(
+            "/api/v1/admin/template-preview", headers=headers, json={**series_preview, "series_unnumbered_template": "{{title}}"}
+        ).status_code
+        == 400
+    )
     styled = {**payload, "color": 0x123456, "metadata_fields": ["narrators", "isbn13", "page_count"]}
     rendered = http.post("/api/v1/admin/template-preview", headers=headers, json=styled)
     assert rendered.status_code == 200 and rendered.json()["color"] == 0x123456
@@ -434,9 +454,17 @@ def test_template_create_update_and_validation(client, monkeypatch: pytest.Monke
     assert http.get("/api/v1/admin/templates").json()[0]["title_template"] == "{{title}}"
     payload["title_template"] = "New: {{title}}"
     payload["metadata_fields"] = ["isbn13", "narrators"]
+    payload["series_numbered_template"] = "Part {{series_index}} of {{series}}"
+    payload["series_unnumbered_template"] = "Series: {{series}}"
     assert http.put(f"/api/v1/admin/templates/{template_id}", headers=headers, json=payload).status_code == 200
     assert http.get("/api/v1/admin/templates").json()[0]["title_template"] == "New: {{title}}"
     assert http.get("/api/v1/admin/templates").json()[0]["metadata_fields"] == ["isbn13", "narrators"]
+    stored = http.get("/api/v1/admin/templates").json()[0]
+    assert stored["series_numbered_template"] == "Part {{series_index}} of {{series}}"
+    assert stored["series_unnumbered_template"] == "Series: {{series}}"
+    payload["series_numbered_template"] = "{{series_tag}}"
+    assert http.put(f"/api/v1/admin/templates/{template_id}", headers=headers, json=payload).status_code == 400
+    assert http.get("/api/v1/admin/templates").json()[0]["series_numbered_template"] == stored["series_numbered_template"]
 
 
 def test_manual_scan_requires_csrf_and_reports_failure_without_secrets(client, monkeypatch: pytest.MonkeyPatch) -> None:

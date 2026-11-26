@@ -165,6 +165,13 @@
         <label for="preview-color" data-text="embedColor">Embed-Farbe</label><input id="preview-color" type="color" value="#2f855a">
         <label><input id="template-show-cover" type="checkbox" checked> <span data-text="showCover">Cover in Benachrichtigungen anzeigen</span></label>
         <p data-text="coverPreviewHint">Die Vorschau und ihre Testnachricht verwenden ein Beispiel-Cover, kein echtes BookOrbit-Cover.</p>
+        <label for="series-numbered" data-text="seriesNumbered">Serientag mit Nummer</label>
+        <input id="series-numbered" type="text" maxlength="512" value="Teil {{series_index}} von {{series}}">
+        <label for="series-unnumbered" data-text="seriesUnnumbered">Serientag ohne Nummer</label>
+        <input id="series-unnumbered" type="text" maxlength="512" value="{{series}}">
+        <p data-text="seriesTagHelp">Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.</p>
+        <label for="sample-series" data-text="sampleSeries">Serienbeispiel für die Vorschau</label>
+        <select id="sample-series"><option value="numbered" data-text="sampleSeriesNumbered">Reihe mit Nummer</option><option value="unnumbered" data-text="sampleSeriesUnnumbered">Reihe ohne Nummer</option><option value="none" data-text="sampleSeriesNone">Keine Reihe</option></select>
         <label for="preview-variable" data-text="variable">Variable</label>
         <select id="preview-variable"></select>
         <button type="button" id="insert-variable" data-text="insertVariable">In Beschreibung einfügen</button>

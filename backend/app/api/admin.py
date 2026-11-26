@@ -3,7 +3,7 @@
 from datetime import UTC, date, datetime, time, timedelta
 from hmac import compare_digest
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -45,7 +45,7 @@ from app.services.configuration import ConfigurationService, CreateServer, Creat
 from app.services.dashboard import DashboardService
 from app.services.notifications import NotificationAdministrationService
 from app.services.sender_profiles import SenderProfileService
-from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES
+from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES, DEFAULT_SERIES_NUMBERED, DEFAULT_SERIES_UNNUMBERED
 
 router = APIRouter(prefix="/admin", tags=["administrator"])
 _SESSION_COOKIE = "bookorbit_session"
@@ -89,6 +89,9 @@ class PreviewInput(BaseModel):
     color: int = Field(default=0x2F855A, ge=0, le=0xFFFFFF)
     metadata_fields: list[str] = Field(default_factory=list, max_length=25)
     show_cover: StrictBool = False
+    series_numbered_template: str = Field(default=DEFAULT_SERIES_NUMBERED, max_length=512)
+    series_unnumbered_template: str = Field(default=DEFAULT_SERIES_UNNUMBERED, max_length=512)
+    sample_series: Literal["numbered", "unnumbered", "none"] = "numbered"
 
 
 class ProfileScopeItem(BaseModel):
@@ -159,6 +162,8 @@ class TemplateInput(BaseModel):
     color: int = Field(default=0x2F855A, ge=0, le=0xFFFFFF)
     show_cover: StrictBool = True
     metadata_fields: list[str] = Field(default_factory=list, max_length=100)
+    series_numbered_template: str = Field(default=DEFAULT_SERIES_NUMBERED, max_length=512)
+    series_unnumbered_template: str = Field(default=DEFAULT_SERIES_UNNUMBERED, max_length=512)
 
 
 def _template_command(payload: TemplateInput) -> CreateTemplate:
@@ -170,6 +175,8 @@ def _template_command(payload: TemplateInput) -> CreateTemplate:
         color=payload.color,
         show_cover=payload.show_cover,
         metadata_fields=tuple(payload.metadata_fields),
+        series_numbered_template=payload.series_numbered_template,
+        series_unnumbered_template=payload.series_unnumbered_template,
     )
 
 
@@ -933,6 +940,8 @@ def list_templates(request: Request, _auth: Annotated[AuthenticationService, Dep
                 "color": row.color,
                 "show_cover": row.show_cover,
                 "metadata_fields": row.metadata_fields,
+                "series_numbered_template": row.series_numbered_template,
+                "series_unnumbered_template": row.series_unnumbered_template,
                 "enabled": row.enabled,
             }
             for row in templates
@@ -1007,12 +1016,22 @@ def _render_sample(payload: PreviewInput) -> dict:
     )
     if len(set(payload.metadata_fields)) != len(payload.metadata_fields):
         raise ValueError("Metadata fields must be distinct")
+    if payload.sample_series == "unnumbered":
+        book.metadata_json["seriesIndex"] = None
+    elif payload.sample_series == "none":
+        book.metadata_json["seriesName"] = None
     return render_embed(
         payload.title,
         payload.description,
         payload.footer,
         payload.color,
-        _template_values(book, "Books", "Example server"),
+        _template_values(
+            book,
+            "Books",
+            "Example server",
+            series_numbered_template=payload.series_numbered_template,
+            series_unnumbered_template=payload.series_unnumbered_template,
+        ),
         metadata_fields=payload.metadata_fields,
     )
 

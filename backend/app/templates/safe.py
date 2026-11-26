@@ -11,6 +11,7 @@ ALLOWED_TEMPLATE_VARIABLES = {
     "authors",
     "series",
     "series_index",
+    "series_tag",
     "library",
     "server",
     "genres",
@@ -41,6 +42,18 @@ ALLOWED_TEMPLATE_VARIABLES = {
     "cover_url",
 }
 _VARIABLE_PATTERN = re.compile(r"{{\s*([a-z_][a-z_0-9]*)\s*}}")
+DEFAULT_SERIES_NUMBERED = "Teil {{series_index}} von {{series}}"
+DEFAULT_SERIES_UNNUMBERED = "{{series}}"
+
+
+def validate_series_format(template: str) -> None:
+    """Limit nested series formats to source values and ordinary literal text."""
+
+    if not template.strip() or len(template) > 512:
+        raise ValueError("Series format must contain between 1 and 512 characters")
+    validate_template_syntax(template, "Series format")
+    if any(name not in {"series", "series_index"} for name in _VARIABLE_PATTERN.findall(template)):
+        raise ValueError("Series format supports only series and series_index")
 
 
 def validate_template_syntax(template: str, label: str) -> None:

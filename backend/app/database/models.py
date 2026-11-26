@@ -165,6 +165,10 @@ class NotificationTemplate(Base):
     color: Mapped[int] = mapped_column(Integer, default=0x2F855A)
     show_cover: Mapped[bool] = mapped_column(Boolean, default=True)
     metadata_fields: Mapped[list[str]] = mapped_column(JSON, default=list)
+    series_numbered_template: Mapped[str] = mapped_column(
+        String(512), default="Teil {{series_index}} von {{series}}", server_default="Teil {{series_index}} von {{series}}"
+    )
+    series_unnumbered_template: Mapped[str] = mapped_column(String(512), default="{{series}}", server_default="{{series}}")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

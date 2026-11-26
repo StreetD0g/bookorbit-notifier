@@ -74,6 +74,8 @@ Object.assign(messages.de, {showCover: "Cover in Benachrichtigungen anzeigen", c
 Object.assign(messages.en, {showCover: "Show covers in notifications", coverPreviewHint: "The preview and its test message use a sample cover, not a real BookOrbit cover.", variableUnavailable: "not available yet"});
 Object.assign(messages.de, {mainNavigation: "Hauptnavigation", arrivalPages: "Neuzugänge Seiten", historyPages: "Zustellungen Seiten"});
 Object.assign(messages.en, {mainNavigation: "Main navigation", arrivalPages: "Arrival pages", historyPages: "Delivery pages"});
+Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
+Object.assign(messages.en, {seriesNumbered: "Series tag with number", seriesUnnumbered: "Series tag without number", seriesTagHelp: "Use {{series_tag}} as a variable or metadata field. It is empty when there is no series. Both formats support {{series}} and {{series_index}}.", sampleSeries: "Series example for preview", sampleSeriesNumbered: "Numbered series", sampleSeriesUnnumbered: "Unnumbered series", sampleSeriesNone: "No series"});
 messages.de.previewOriginal = "Originaler Webhook-Name (nicht abgerufen)";
 messages.en.previewOriginal = "Original webhook name (not retrieved)";
 let counts = null;
@@ -219,7 +221,8 @@ async function renderPreview() {
 function queuePreview() { clearTimeout(previewTimer); ++previewRequest; previewTimer = setTimeout(renderPreview, 250); }
 function previewDraft() {
   return {title: document.querySelector("#preview-title").value, description: document.querySelector("#preview-description").value,
-    footer: document.querySelector("#preview-footer").value, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), metadata_fields: [...selectedMetadata], show_cover: document.querySelector("#template-show-cover").checked};
+    footer: document.querySelector("#preview-footer").value, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), metadata_fields: [...selectedMetadata], show_cover: document.querySelector("#template-show-cover").checked,
+    series_numbered_template: document.querySelector("#series-numbered").value, series_unnumbered_template: document.querySelector("#series-unnumbered").value, sample_series: document.querySelector("#sample-series").value};
 }
 function renderMetadataFields() {
   const list = document.querySelector("#metadata-fields"); list.replaceChildren();
@@ -557,6 +560,8 @@ document.querySelector("#template-select").addEventListener("change", event => {
   const template = templates.find(item => String(item.id) === event.target.value);
   document.querySelector("#template-name").value = template?.name || "";
   document.querySelector("#template-show-cover").checked = template?.show_cover ?? true;
+  document.querySelector("#series-numbered").value = template?.series_numbered_template ?? "Teil {{series_index}} von {{series}}";
+  document.querySelector("#series-unnumbered").value = template?.series_unnumbered_template ?? "{{series}}";
   document.querySelector("#preview-cover").hidden = !document.querySelector("#template-show-cover").checked;
   if (template) {
     document.querySelector("#preview-title").value = template.title_template;
@@ -569,7 +574,7 @@ document.querySelector("#template-select").addEventListener("change", event => {
 });
 document.querySelector("#save-template").addEventListener("click", async () => {
   const selected = templates.find(item => String(item.id) === document.querySelector("#template-select").value);
-  const payload = {name: document.querySelector("#template-name").value, title_template: document.querySelector("#preview-title").value, description_template: document.querySelector("#preview-description").value, footer_template: document.querySelector("#preview-footer").value || null, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), show_cover: document.querySelector("#template-show-cover").checked, metadata_fields: [...selectedMetadata]};
+  const payload = {name: document.querySelector("#template-name").value, title_template: document.querySelector("#preview-title").value, description_template: document.querySelector("#preview-description").value, footer_template: document.querySelector("#preview-footer").value || null, color: parseInt(document.querySelector("#preview-color").value.slice(1), 16), show_cover: document.querySelector("#template-show-cover").checked, metadata_fields: [...selectedMetadata], series_numbered_template: document.querySelector("#series-numbered").value, series_unnumbered_template: document.querySelector("#series-unnumbered").value};
   try {
     const result = await call(selected ? "/templates/" + selected.id : "/templates", {...mutationOptions(payload), method: selected ? "PUT" : "POST"});
     await refresh();
@@ -592,6 +597,7 @@ language.addEventListener("change", translate);
 document.querySelector("#profile-scope").addEventListener("change", () => selectScope().catch(() => { message.textContent = strings().failed; }));
 document.querySelector("#profile-target").addEventListener("change", () => { populatePreviewContexts(); loadProfile().catch(() => { message.textContent = strings().failed; }); });
 for (const selector of ["#preview-title", "#preview-description", "#preview-footer", "#preview-color"]) document.querySelector(selector).addEventListener("input", queuePreview);
+for (const selector of ["#series-numbered", "#series-unnumbered", "#sample-series"]) document.querySelector(selector).addEventListener("input", queuePreview);
 document.querySelector("#template-show-cover").addEventListener("change", event => { document.querySelector("#preview-cover").hidden = !event.target.checked; });
 for (const selector of ["#username-choice", "#username-value", "#avatar-choice", "#avatar-value", "#preview-webhook", "#preview-library"]) document.querySelector(selector).addEventListener("input", updatePreviewSender);
 document.querySelector("#insert-variable").addEventListener("click", () => {

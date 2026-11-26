@@ -71,6 +71,15 @@ def test_default_embed_builder_uses_library_template(tmp_path: Path) -> None:
         stored_template.show_cover = False
         session.commit()
     assert builder.build(event_id).cover_source is None
+    with Session(engine) as session:
+        stored_event = session.get(Event, event_id)
+        stored_template = session.get(NotificationTemplate, 1)
+        assert stored_event is not None and stored_template is not None
+        stored_event.book.metadata_json = {"seriesName": "My Series", "seriesIndex": None}
+        stored_template.description_template = "{{series_tag}}"
+        stored_template.series_unnumbered_template = "From {{series}}"
+        session.commit()
+    assert builder.build(event_id).embed["description"] == "From My Series"
     engine.dispose()
 
 
@@ -117,6 +126,40 @@ def test_bookorbit_detail_and_card_variables_handle_narrators_and_missing_audio(
     values = _template_values(book, "Books", "Server")
     assert values["narrators"] == ["Card narrator"]
     assert values["formats"] == []
+
+
+@pytest.mark.parametrize(
+    ("series", "number", "expected"),
+    [
+        ("Nordseekrimi", 2, "Part 2 of Nordseekrimi"),
+        ("Wissen", None, "Reihe: Wissen"),
+        ("Wissen", "", "Reihe: Wissen"),
+        ("Wissen", 0, "Part 0 of Wissen"),
+        (None, 3, ""),
+        (" ", 3, ""),
+    ],
+)
+def test_series_tag_uses_custom_numbered_and_unnumbered_formats(series, number, expected) -> None:
+    book = Book(title="Example", authors_json=[], metadata_json={"seriesName": series, "seriesIndex": number})
+    values = _template_values(
+        book,
+        "Books",
+        "Server",
+        series_numbered_template="Part {{series_index}} of {{series}}",
+        series_unnumbered_template="Reihe: {{series}}",
+    )
+    assert values["series_tag"] == expected
+    embed = render_embed("{{title}}", "{{series_tag}}", None, 42, values, metadata_fields=["series_tag"])
+    assert embed["description"] == expected
+    assert bool(embed.get("fields")) == bool(expected)
+
+
+def test_series_tag_rejects_nested_or_unrelated_variables() -> None:
+    book = Book(title="Example", authors_json=[], metadata_json={"seriesName": "Series"})
+    with pytest.raises(ValueError):
+        _template_values(book, "Books", "Server", series_unnumbered_template="{{series_tag}}")
+    with pytest.raises(ValueError):
+        _template_values(book, "Books", "Server", series_unnumbered_template="{{title}}")
 
 
 @pytest.mark.parametrize(
