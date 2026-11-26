@@ -74,6 +74,8 @@ Object.assign(messages.de, {showCover: "Cover in Benachrichtigungen anzeigen", c
 Object.assign(messages.en, {showCover: "Show covers in notifications", coverPreviewHint: "The preview and its test message use a sample cover, not a real BookOrbit cover.", variableUnavailable: "not available yet"});
 Object.assign(messages.de, {mainNavigation: "Hauptnavigation", arrivalPages: "Neuzugänge Seiten", historyPages: "Zustellungen Seiten"});
 Object.assign(messages.en, {mainNavigation: "Main navigation", arrivalPages: "Arrival pages", historyPages: "Delivery pages"});
+Object.assign(messages.de, {settings: "Settings", sectionNavigation: "Bereichsnavigation"});
+Object.assign(messages.en, {settings: "Settings", sectionNavigation: "Section navigation"});
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
 Object.assign(messages.en, {seriesNumbered: "Series tag with number", seriesUnnumbered: "Series tag without number", seriesTagHelp: "Use {{series_tag}} as a variable or metadata field. It is empty when there is no series. Both formats support {{series}} and {{series_index}}.", sampleSeries: "Series example for preview", sampleSeriesNumbered: "Numbered series", sampleSeriesUnnumbered: "Unnumbered series", sampleSeriesNone: "No series"});
 messages.de.previewOriginal = "Originaler Webhook-Name (nicht abgerufen)";
@@ -94,6 +96,25 @@ let arrivals = [];
 let arrivalsRequest = 0;
 let arrivalsOffset = 0;
 function strings() { return messages[language.value]; }
+
+// Changing views only hides existing controls, so unsaved editor input is retained.
+const viewCategories = {overview: "overview", libraries: "bookorbit", presets: "presets", arrivals: "imports", history: "discord", servers: "settings", webhooks: "settings", sender: "settings"};
+const legacyViews = {"dashboard-title": "overview", "arrivals-heading": "arrivals", "servers-heading": "servers", "libraries-heading": "libraries", "webhooks-heading": "webhooks", "preview-heading": "presets", "history-heading": "history", "account-settings": "servers"};
+function selectView() {
+  const fragment = location.hash.slice(1);
+  const candidate = fragment.startsWith("view-") ? fragment.slice(5) : legacyViews[fragment];
+  const view = Object.hasOwn(viewCategories, candidate) ? candidate : "overview", category = viewCategories[view];
+  document.querySelectorAll("[data-view]").forEach(element => { element.hidden = element.dataset.view !== view; });
+  document.querySelectorAll("[data-category]").forEach(link => {
+    if (link.dataset.category === category) link.setAttribute("aria-current", "true"); else link.removeAttribute("aria-current");
+  });
+  document.querySelectorAll("[data-menu]").forEach(link => {
+    link.hidden = link.dataset.menu !== category;
+    if (link.getAttribute("href") === "#view-" + view) link.setAttribute("aria-current", "page"); else link.removeAttribute("aria-current");
+  });
+}
+window.addEventListener("hashchange", selectView);
+selectView();
 function translate() {
   document.documentElement.lang = language.value;
   document.querySelectorAll("[data-text]").forEach(element => { element.textContent = strings()[element.dataset.text]; });

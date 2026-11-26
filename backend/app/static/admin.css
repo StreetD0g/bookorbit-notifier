@@ -4,10 +4,12 @@ body { margin: 0; line-height: 1.5; }
 main { max-width: 52rem; margin: auto; padding: 1.5rem; }
 header { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
 header h1 { flex: 1 1 20rem; }
-.main-navigation { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
-.main-navigation a { color: var(--text); border: 1px solid var(--border); border-radius: .35rem; padding: .4rem .6rem; text-decoration: none; }
-.main-navigation a:hover { text-decoration: underline; }
-.main-navigation a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[hidden] { display: none !important; }
+.main-navigation, .sub-navigation { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+.main-navigation a, .sub-navigation a { color: var(--text); border: 1px solid var(--border); border-radius: .35rem; padding: .4rem .6rem; text-decoration: none; }
+.main-navigation a[aria-current], .sub-navigation a[aria-current] { background: #166534; color: #fff; border-color: #166534; }
+.main-navigation a:hover, .sub-navigation a:hover { text-decoration: underline; }
+.main-navigation a:focus-visible, .sub-navigation a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 section { background: var(--surface); border-radius: .6rem; padding: 1.5rem; }
 form { display: grid; gap: .6rem; max-width: 30rem; margin: 1rem 0; }
 input, select, textarea, button { font: inherit; padding: .6rem; border-radius: .35rem; border: 1px solid var(--border); }

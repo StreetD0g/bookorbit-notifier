@@ -36,24 +36,34 @@
       </details>
     </section>
     <section id="dashboard" aria-labelledby="dashboard-title" hidden>
-      <h2 id="dashboard-title" data-text="overview">Übersicht</h2>
       <button id="refresh" type="button" data-text="refresh">Aktualisieren</button>
       <button id="logout" type="button" data-text="logout">Abmelden</button>
       <nav class="main-navigation" aria-label="Hauptnavigation" data-label="mainNavigation">
-        <a href="#dashboard-title" data-text="overview">Übersicht</a>
-        <a href="#arrivals-heading" data-text="arrivals">Neuzugänge</a>
-        <a href="#servers-heading" data-text="servers">BookOrbit-Server</a>
-        <a href="#libraries-heading" data-text="libraries">Bibliotheken</a>
-        <a href="#webhooks-heading" data-text="webhooks">Discord-Webhooks</a>
-        <a href="#preview-heading" data-text="previewTitle">Discord-Live-Vorschau</a>
-        <a href="#history-heading" data-text="history">Zustellhistorie</a>
-        <a href="#account-settings" data-text="changePassword">Passwort ändern</a>
+        <a href="#view-overview" data-category="overview" data-text="overview">Übersicht</a>
+        <a href="#view-libraries" data-category="bookorbit">BookOrbit</a>
+        <a href="#view-presets" data-category="presets">Webhook Presets</a>
+        <a href="#view-arrivals" data-category="imports">Import Logs</a>
+        <a href="#view-history" data-category="discord">Discord Logs</a>
+        <a href="#view-servers" data-category="settings" data-text="settings">Settings</a>
       </nav>
+      <nav class="sub-navigation" aria-label="Bereichsnavigation" data-label="sectionNavigation">
+        <a href="#view-overview" data-menu="overview" data-text="overview">Übersicht</a>
+        <a href="#view-libraries" data-menu="bookorbit" data-text="libraries" hidden>Bibliotheken</a>
+        <a href="#view-presets" data-menu="presets" data-text="previewTitle" hidden>Discord-Live-Vorschau</a>
+        <a href="#view-arrivals" data-menu="imports" data-text="arrivals" hidden>Neuzugänge</a>
+        <a href="#view-history" data-menu="discord" data-text="history" hidden>Zustellhistorie</a>
+        <a href="#view-servers" data-menu="settings" data-text="servers" hidden>BookOrbit-Server</a>
+        <a href="#view-webhooks" data-menu="settings" data-text="webhooks" hidden>Discord-Webhooks</a>
+        <a href="#view-sender" data-menu="settings" data-text="senderProfile" hidden>Absenderprofil</a>
+      </nav>
+      <div id="view-overview" data-view="overview">
+      <h2 id="dashboard-title" data-text="overview">Übersicht</h2>
       <p data-text="utcNote">Zeiträume beziehen sich auf UTC. Der Serverstatus zeigt die Konfiguration, keine Live-Erreichbarkeit.</p>
       <dl id="overview-counts"></dl>
       <h3 data-text="dashboard">Benachrichtigungen</h3>
       <dl id="counts"></dl>
-      <section class="management" aria-labelledby="arrivals-heading">
+      </div>
+      <section id="view-arrivals" data-view="arrivals" class="management" aria-labelledby="arrivals-heading" hidden>
         <h2 id="arrivals-heading" data-text="arrivals">Neuzugänge</h2>
         <p data-text="arrivalsHelp">Erkannte Neuzugänge; die stille Ersterfassung ist nicht enthalten.</p>
         <label for="arrivals-server" data-text="arrivalsServer">Server</label>
@@ -82,7 +92,7 @@
           <button type="button" id="arrivals-next" data-text="next">Weiter</button>
         </nav>
       </section>
-      <details id="account-settings" class="management">
+      <details id="account-settings" data-view="servers" class="management" hidden>
         <summary data-text="changePassword">Passwort ändern</summary>
         <form id="change-password-form">
           <label for="current-password" data-text="currentPassword">Bisheriges Passwort</label>
@@ -95,7 +105,7 @@
           <button type="submit" data-text="changePassword">Passwort ändern</button>
         </form>
       </details>
-      <section class="management" aria-labelledby="servers-heading">
+      <section id="view-servers" data-view="servers" class="management" aria-labelledby="servers-heading" hidden>
         <h2 id="servers-heading" data-text="servers">BookOrbit-Server</h2>
         <form id="server-form">
           <label for="server-name" data-text="name">Name</label><input id="server-name" maxlength="120" required>
@@ -105,7 +115,7 @@
         </form>
         <ul id="server-list"></ul>
       </section>
-      <section class="management" aria-labelledby="webhooks-heading">
+      <section id="view-webhooks" data-view="webhooks" class="management" aria-labelledby="webhooks-heading" hidden>
         <h2 id="webhooks-heading" data-text="webhooks">Discord-Webhooks</h2>
         <form id="webhook-form">
           <label for="webhook-name" data-text="name">Name</label><input id="webhook-name" maxlength="120" required>
@@ -114,12 +124,12 @@
         </form>
         <ul id="webhook-list"></ul>
       </section>
-      <section class="management" aria-labelledby="libraries-heading">
+      <section id="view-libraries" data-view="libraries" class="management" aria-labelledby="libraries-heading" hidden>
         <h2 id="libraries-heading" data-text="libraries">Bibliotheken</h2>
         <p data-text="libraryHelp">Bibliotheken werden über den jeweiligen Server aktualisiert. Die erste Erfassung erzeugt keine Benachrichtigungen.</p>
         <div id="library-list"></div>
       </section>
-      <section class="management" aria-labelledby="history-heading">
+      <section id="view-history" data-view="history" class="management" aria-labelledby="history-heading" hidden>
         <h2 id="history-heading" data-text="history">Zustellhistorie</h2>
         <p data-text="historyHelp">Zustellungen in Seiten zu je 50. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht.</p>
         <label for="history-status" data-text="deliveryStates">Zustellstatus</label>
@@ -127,6 +137,7 @@
         <div id="delivery-list"></div>
         <nav aria-label="Zustellungen Seiten" data-label="historyPages"><button type="button" id="history-previous" data-text="previous">Zurück</button><span id="history-page" aria-live="polite"></span><button type="button" id="history-next" data-text="next">Weiter</button></nav>
       </section>
+      <section id="view-sender" data-view="sender" class="management" hidden>
       <h2 data-text="senderProfile">Absenderprofil</h2>
       <label for="profile-scope" data-text="profileScope">Konfigurationsebene</label>
       <select id="profile-scope"><option value="global" data-text="globalScope">Global</option><option value="webhook" data-text="webhookScope">Webhook</option><option value="library" data-text="libraryScope">Bibliothek</option></select>
@@ -144,7 +155,8 @@
         <input id="avatar-value" type="url" maxlength="2048">
         <button type="submit" data-text="save">Speichern</button>
       </form>
-      <section aria-labelledby="preview-heading" class="preview-editor">
+      </section>
+      <section id="view-presets" data-view="presets" aria-labelledby="preview-heading" class="preview-editor" hidden>
         <h2 id="preview-heading" data-text="previewTitle">Discord-Live-Vorschau</h2>
         <p data-text="previewHint">Die Vorschau zeigt Beispieldaten. Änderungen werden erst beim Speichern übernommen und nicht versendet.</p>
         <p data-text="avatarPrivacy">Profilbilder werden für die Vorschau direkt im Browser vom Bildanbieter geladen. Der Anbieter sieht dabei deine IP-Adresse.</p>
