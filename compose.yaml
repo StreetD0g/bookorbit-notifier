@@ -1,0 +1,19 @@
+services:
+  notifier:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18765:8000"
+    env_file:
+      - ./data/docker.env
+    environment:
+      BOOKORBIT_NOTIFIER_DATABASE_URL: sqlite:////data/bookorbit-notifier.db
+      BOOKORBIT_NOTIFIER_ADMIN_ENABLED: "true"
+      BOOKORBIT_NOTIFIER_ADMIN_ORIGIN: http://127.0.0.1:18765
+      BOOKORBIT_NOTIFIER_RUNTIME_ENABLED: "true"
+    volumes:
+      - notifier-data:/data
+
+volumes:
+  notifier-data:
