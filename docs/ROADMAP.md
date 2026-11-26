@@ -41,6 +41,15 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [ ] Provide German and English text, responsive layout, and dark mode by default.
 - [ ] Add safe redacted exports and confirmation flows for risky/manual resend operations.
 
+### Individuelle Discord-Absenderprofile
+
+- [ ] Add independent global, webhook-specific, and library-specific sender-name and avatar-URL overrides. The global display-name default is `BookOrbit Notifier`.
+- [ ] Resolve each field independently in this order: library override, webhook override, global override, then Discord's original webhook configuration. A lower configuration level may explicitly inherit its parent or use the original webhook value.
+- [ ] Send resolved values using Discord's documented per-message `username` and `avatar_url` webhook parameters, so one Discord webhook can publish different sender profiles without changing its saved configuration.
+- [ ] Provide a bundled BookOrbit Notifier logo option, a custom avatar URL option, an original-webhook option, and a live Discord-message preview in the WebUI.
+- [ ] Add profile-aware test messages. Validate custom avatar URLs for safe, Discord-reachable public HTTP(S) use; never rely on public reachability of the BookOrbit server or proxy source credentials through Discord.
+- [ ] Do not call Discord's Modify Webhook API as part of normal delivery. A durable webhook-configuration change requires an explicit, separately confirmed administrator action.
+
 ## Phase 5 – production readiness
 
 - [ ] Add encrypted secret storage, Argon2id sessions, CSRF/XSS protections, and security tests.
