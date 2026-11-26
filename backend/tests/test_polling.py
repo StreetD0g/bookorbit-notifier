@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -89,3 +90,19 @@ async def test_polling_service_records_partial_scan_when_later_page_fails(
         history = session.scalar(select(ScanHistory))
         assert history is not None
         assert history.status == ScanStatus.PARTIAL
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("fail_after", "status"), [(None, ScanStatus.SUCCEEDED), (0, ScanStatus.FAILED), (1, ScanStatus.PARTIAL)])
+async def test_scan_records_start_before_source_work(scan_setup, monkeypatch, fail_after, status) -> None:
+    """Successful, partial and failed scans all preserve the pre-request start time."""
+
+    factory, server, _library = scan_setup
+    started = datetime(2000, 1, 1, tzinfo=UTC)
+    monkeypatch.setattr("app.scanner.polling.utc_now", lambda: started)
+    await BookOrbitPollingService(factory).scan_server(server.id, FakeBookOrbitClient([_card(1), _card(2)], fail_after=fail_after))
+    with factory() as session:
+        history = session.scalar(select(ScanHistory))
+        assert history is not None and history.status == status
+        assert history.started_at.replace(tzinfo=UTC) == started
+        assert history.completed_at.replace(tzinfo=UTC) > started

@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database.models import Library, Server
+from app.database.models import Library, Server, utc_now
 from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.scanner.reconcile import ObservedBook, ReconciliationResult, reconcile_library_inventory, record_failed_scan
 from app.schemas.bookorbit import BookOrbitBookCard
@@ -85,12 +86,13 @@ class BookOrbitPollingService:
     ) -> LibraryScanReport:
         """Keep useful pages from a failed inventory as a partial, non-removal scan."""
 
+        started_at = utc_now()
         observed: list[ObservedBook] = []
         try:
             async for card in client.iter_library_books(source_library_id):
                 observed.append(_observed_book(card))
         except BookOrbitApiError as error:
-            return self._persist_partial_or_failed_scan(server_id, library_id, source_library_id, observed, str(error))
+            return self._persist_partial_or_failed_scan(server_id, library_id, source_library_id, observed, str(error), started_at)
 
         with self._session_factory() as session:
             with session.begin():
@@ -100,6 +102,7 @@ class BookOrbitPollingService:
                     library_id=library_id,
                     observed_books=observed,
                     scan_complete=True,
+                    started_at=started_at,
                 )
         return LibraryScanReport(library_id=library_id, source_library_id=source_library_id, result=result, error=None)
 
@@ -110,6 +113,7 @@ class BookOrbitPollingService:
         source_library_id: int,
         observed: list[ObservedBook],
         error: str,
+        started_at: datetime,
     ) -> LibraryScanReport:
         """Persist prior pages as partial only after a baseline exists; never lose known arrivals."""
 
@@ -123,9 +127,10 @@ class BookOrbitPollingService:
                         observed_books=observed,
                         scan_complete=False,
                         incomplete_reason=error,
+                        started_at=started_at,
                     )
                 else:
-                    record_failed_scan(session, server_id=server_id, library_id=library_id, error_message=error)
+                    record_failed_scan(session, server_id=server_id, library_id=library_id, error_message=error, started_at=started_at)
                     result = None
         return LibraryScanReport(library_id=library_id, source_library_id=source_library_id, result=result, error=error)
 
