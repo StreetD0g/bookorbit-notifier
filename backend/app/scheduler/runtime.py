@@ -87,6 +87,11 @@ class RuntimeScheduler:
         self._delivery_service = delivery_service
         self._next_due: dict[int, datetime] = {}
 
+    def scheduled_scans(self) -> dict[int, datetime]:
+        """Return a detached snapshot of planned scan times, not live source status."""
+
+        return self._next_due.copy()
+
     async def run_once(self, *, now: datetime | None = None, force_server_id: int | None = None) -> SchedulerTickReport:
         """Run due scans and the outbox once; `force_server_id` is the manual trigger hook."""
 

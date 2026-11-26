@@ -49,6 +49,38 @@ def test_dashboard_counts_only_detected_events_in_utc_windows(tmp_path: Path) ->
     result = DashboardService(factory).summary(now=datetime(2026, 11, 26, 15, tzinfo=UTC))
     assert (result["library_count"], result["monitored_count"], result["book_count"]) == (1, 1, 3)
     assert (result["arrivals_today"], result["arrivals_week"], result["arrivals_month"]) == (1, 2, 2)
-    assert result["servers"] == [{"id": 1, "name": "Source", "enabled": True}]
+    assert result["servers"][0]["id"] == 1
+    assert result["servers"][0]["last_library_scan_status"] == ScanStatus.SUCCEEDED
+    assert result["servers"][0]["last_library_scan_at"].date().isoformat() == "2026-11-25"
     assert "ciphertext" not in str(result) and "internal.example" not in str(result)
+    engine.dispose()
+
+
+def test_server_overview_reports_latest_library_scan_without_sensitive_errors(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-status.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(engine, expire_on_commit=False)
+    with factory.begin() as session:
+        server = Server(name="A", base_url="https://private.example", api_key_encrypted="ciphertext")
+        no_scans = Server(name="B", base_url="https://private.example", api_key_encrypted="ciphertext", enabled=False)
+        library = Library(server=server, name="Books", bookorbit_library_id=1)
+        session.add_all([server, no_scans, library])
+        session.flush()
+        for day, status in [(1, ScanStatus.SUCCEEDED), (2, ScanStatus.FAILED)]:
+            session.add(
+                ScanHistory(
+                    server_id=server.id,
+                    library_id=library.id,
+                    status=status,
+                    started_at=datetime(2026, 1, day, tzinfo=UTC),
+                    completed_at=datetime(2026, 1, day, tzinfo=UTC),
+                    error_message="private error",
+                )
+            )
+    result = DashboardService(factory).summary(now=datetime(2026, 1, 3, tzinfo=UTC))
+    first, second = result["servers"]
+    assert first["last_library_scan_status"] == ScanStatus.FAILED
+    assert first["last_library_scan_at"].day == 2
+    assert second["enabled"] is False and second["last_library_scan_status"] is None
+    assert "private" not in str(result) and "ciphertext" not in str(result)
     engine.dispose()

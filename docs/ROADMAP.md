@@ -27,12 +27,13 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [x] Implement client-driven paginated source reconciliation and a per-server scan lock.
 - [x] Implement the configurable recurring polling scheduler and core manual-scan trigger.
 - [x] Wire the opt-in scheduler into the application runtime lifecycle after an explicit migration and encryption-key check.
-- [ ] Expose the existing manual-scan trigger through the authenticated administrator API/UI in Phase 4.
+- [x] Expose the existing manual-scan trigger through the authenticated administrator API/UI in Phase 4.
 - [x] Implement transactional per-webhook outbox state transitions, exponential backoff, and Discord retry-hint handling.
 - [x] Implement configurable metadata delay, bounded detail refresh, deadline release, and stale-send recovery.
 - [x] Implement the outbound Discord delivery worker over the persistent outbox.
 - [x] Add persistent per-target delivery history, status summaries, and explicit-confirmation manual retry domain controls.
-- [ ] Expose delivery/recovery observability and retry controls through the authenticated administrator API/UI in Phase 4.
+- [x] Expose delivery status, history and retry controls through the authenticated administrator API/UI in Phase 4.
+- [ ] Expose detailed recovery observability through the authenticated administrator API/UI.
 - [x] Add SQLite- and HTTPX-simulated integration tests for restart recovery, partial scans, source outage, and Discord outage behaviour.
 - [ ] Validate the same acceptance scenarios against a real BookOrbit release and a disposable Discord webhook before production use.
 
@@ -47,15 +48,17 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [ ] Verify the cover-delivery fix end-to-end using an authenticated BookOrbit cover and an explicitly authorized test webhook. Automated simulated source/Discord integration tests pass.
 - [x] Fix duration template variables: keep `duration_seconds` as seconds; format `duration` as `HH:MM h`, or `MM min` when hours are zero. Verify the displayed values in the preview and delivered message.
 - [x] Show a bundled sample cover in the template preview and its explicitly sent test message when covers are enabled; mark unavailable link variables in the editor.
+- [x] Provide list, table and lazily loaded cover-grid views for detected arrivals, with existing filters and detail history.
+- [x] Show the latest recorded library-scan result and the runtime's next scheduled scan per configured server when available.
 - [ ] Build setup, login, dashboard, server, library, webhook, history, log, settings, and template-editor views.
 - [ ] Provide German and English text, responsive layout, and dark mode by default.
 - [ ] Add safe redacted exports and confirmation flows for risky/manual resend operations.
 
 ### Individuelle Discord-Absenderprofile
 
-- [ ] Add independent global, webhook-specific, and library-specific sender-name and avatar-URL overrides. The global display-name default is `BookOrbit Notifier`.
-- [ ] Resolve each field independently in this order: library override, webhook override, global override, then Discord's original webhook configuration. A lower configuration level may explicitly inherit its parent or use the original webhook value.
-- [ ] Send resolved values using Discord's documented per-message `username` and `avatar_url` webhook parameters, so one Discord webhook can publish different sender profiles without changing its saved configuration.
+- [x] Add independent global, webhook-specific, and library-specific sender-name and avatar-URL overrides. The global display-name default is `BookOrbit Notifier`.
+- [x] Resolve each field independently in this order: library override, webhook override, global override, then Discord's original webhook configuration. A lower configuration level may explicitly inherit its parent or use the original webhook value.
+- [x] Send resolved values using Discord's documented per-message `username` and `avatar_url` webhook parameters, so one Discord webhook can publish different sender profiles without changing its saved configuration.
 - [ ] Provide a bundled BookOrbit Notifier logo option, a custom avatar URL option, an original-webhook option, and a live Discord-message preview in the WebUI.
 - [ ] Add profile-aware test messages. Validate custom avatar URLs for safe, Discord-reachable public HTTP(S) use; never rely on public reachability of the BookOrbit server or proxy source credentials through Discord.
 - [ ] Do not call Discord's Modify Webhook API as part of normal delivery. A durable webhook-configuration change requires an explicit, separately confirmed administrator action.

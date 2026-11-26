@@ -26,6 +26,8 @@ Remote access requires an HTTPS origin; plain HTTP is accepted only for localhos
 
 The administrator menu separates the overview, libraries, webhook presets, arrivals, delivery history and settings into views. The selected view is reflected in the URL fragment, and switching views keeps unsaved form inputs in the current page. Reloading or using the separate refresh action can still discard unsaved edits.
 
+The overview lists each server's most recently recorded library-scan result and, while the runtime is active, its next scheduled scan when available. A library scan is a historical observation, not a live connectivity test or an aggregate assessment of every library; scheduled times can be delayed by ongoing work and are reset when the process restarts.
+
 Existing server URLs cannot be changed in place because existing library and book IDs belong to that source; create a new server configuration for another instance. Rotating a stored webhook URL requires explicit confirmation because pending deliveries will use the replacement destination. A manual scan is available only with the opt-in runtime enabled; it does not itself trigger an unrelated delivery pass.
 
 The `{{series_tag}}` variable is empty when the book has no series. Each template has two editable formats: the numbered format (for example `Part {{series_index}} of {{series}}`) and the fallback when a series has no number (for example `{{series}}`). The editor can preview both cases and a book without a series. These formats accept literal text and only the `{{series}}` and `{{series_index}}` placeholders; they do not execute code. Existing templates keep their current fields and receive default formats during migration.

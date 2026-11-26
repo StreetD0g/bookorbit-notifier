@@ -315,7 +315,13 @@ def summary(request: Request, _auth: Annotated[AuthenticationService, Depends(_a
 def dashboard(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> dict:
     """Return local inventory and event aggregates without claiming live source status."""
 
-    return DashboardService(request.app.state.session_factory).summary()
+    result = DashboardService(request.app.state.session_factory).summary()
+    scheduler = getattr(request.app.state, "runtime_scheduler", None)
+    scheduled = scheduler.scheduled_scans() if scheduler is not None else {}
+    for server in result["servers"]:
+        server["next_scan_at"] = scheduled.get(server["id"]) if server["enabled"] else None
+    result["runtime_enabled"] = scheduler is not None
+    return result
 
 
 @router.get("/notifications")

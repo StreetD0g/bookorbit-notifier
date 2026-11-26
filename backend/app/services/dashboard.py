@@ -42,7 +42,21 @@ class DashboardService:
                     or 0
                 )
             last_success = session.scalar(select(func.max(ScanHistory.completed_at)).where(ScanHistory.status == ScanStatus.SUCCEEDED))
-            servers = session.scalars(select(Server).order_by(Server.name, Server.id)).all()
+            # ScanHistory is per library, so expose it as such rather than claiming
+            # that a single row proves the whole server is currently reachable.
+            recent_scan_id = (
+                select(ScanHistory.id)
+                .where(ScanHistory.server_id == Server.id)
+                .order_by(ScanHistory.completed_at.desc(), ScanHistory.id.desc())
+                .limit(1)
+                .correlate(Server)
+                .scalar_subquery()
+            )
+            servers = session.execute(
+                select(Server.id, Server.name, Server.enabled, ScanHistory.status, ScanHistory.completed_at)
+                .outerjoin(ScanHistory, ScanHistory.id == recent_scan_id)
+                .order_by(Server.name, Server.id)
+            ).all()
             return {
                 "library_count": library_count,
                 "monitored_count": monitored_count,
@@ -51,6 +65,15 @@ class DashboardService:
                 "arrivals_week": counts["week"],
                 "arrivals_month": counts["month"],
                 "last_successful_scan": last_success,
-                "servers": [{"id": server.id, "name": server.name, "enabled": server.enabled} for server in servers],
+                "servers": [
+                    {
+                        "id": server.id,
+                        "name": server.name,
+                        "enabled": server.enabled,
+                        "last_library_scan_status": server.status,
+                        "last_library_scan_at": server.completed_at,
+                    }
+                    for server in servers
+                ],
                 "timezone": "UTC",
             }

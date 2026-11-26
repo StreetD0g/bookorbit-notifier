@@ -78,6 +78,10 @@ Object.assign(messages.de, {settings: "Settings", sectionNavigation: "Bereichsna
 Object.assign(messages.en, {settings: "Settings", sectionNavigation: "Section navigation"});
 Object.assign(messages.de, {arrivalView: "Ansicht", arrivalList: "Liste", arrivalTable: "Tabelle", arrivalGrid: "Cover-Grid", arrivalSource: "Quelle", arrivalDate: "Erkannt", arrivalStatus: "Status"});
 Object.assign(messages.en, {arrivalView: "View", arrivalList: "List", arrivalTable: "Table", arrivalGrid: "Cover grid", arrivalSource: "Source", arrivalDate: "Detected", arrivalStatus: "Status"});
+Object.assign(messages.de, {serverScanOverview: "Letzter Bibliotheksscan je Server", serverScanHelp: "Der zuletzt protokollierte Bibliotheksscan ist keine Live-Verbindungsprüfung und bewertet nicht alle Bibliotheken eines Servers.", scanUnknown: "Noch kein Bibliotheksscan protokolliert", scanDisabled: "Deaktiviert", scanSucceeded: "Erfolgreich", scanPartial: "Unvollständig", scanFailed: "Fehlgeschlagen"});
+Object.assign(messages.en, {serverScanOverview: "Latest library scan per server", serverScanHelp: "The latest recorded library scan is not a live connection check and does not evaluate every library on a server.", scanUnknown: "No library scan recorded yet", scanDisabled: "Disabled", scanSucceeded: "Succeeded", scanPartial: "Incomplete", scanFailed: "Failed"});
+Object.assign(messages.de, {nextScan: "Nächster geplanter Scan", runtimeOff: "Automatische Verarbeitung deaktiviert", runtimeOn: "Automatische Verarbeitung aktiviert", nextScanHint: "Scanzeiten sind geplante Zeitpunkte und können sich durch laufende Aufgaben verzögern."});
+Object.assign(messages.en, {nextScan: "Next scheduled scan", runtimeOff: "Automatic processing disabled", runtimeOn: "Automatic processing enabled", nextScanHint: "Scan times are scheduled estimates and may be delayed by ongoing work."});
 messages.de.loadCover = "Cover laden";
 messages.en.loadCover = "Load cover";
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
@@ -325,6 +329,12 @@ function renderOverview(data) {
   const label = document.createElement("dt"), value = document.createElement("dd");
   label.textContent = strings().configuredServers; value.textContent = data.servers.filter(server => server.enabled).length + " / " + data.servers.length;
   list.append(label, value);
+  const scans = document.querySelector("#overview-server-scans"); scans.replaceChildren();
+  for (const server of data.servers) {
+    const item = document.createElement("li"), status = {SUCCEEDED: strings().scanSucceeded, PARTIAL: strings().scanPartial, FAILED: strings().scanFailed}[server.last_library_scan_status] || strings().scanUnknown;
+    item.textContent = [server.name, server.enabled ? null : strings().scanDisabled, status, server.last_library_scan_at, server.next_scan_at ? strings().nextScan + ": " + server.next_scan_at : null].filter(Boolean).join(" · "); scans.append(item);
+  }
+  document.querySelector("#runtime-status").textContent = data.runtime_enabled ? strings().runtimeOn : strings().runtimeOff;
 }
 function fillFilter(select, entries, previous) {
   select.replaceChildren();

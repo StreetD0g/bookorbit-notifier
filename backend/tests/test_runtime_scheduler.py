@@ -85,6 +85,10 @@ async def test_scheduler_observes_server_interval_and_manual_trigger(
     start = datetime(2026, 11, 26, tzinfo=UTC)
 
     first = await scheduler.run_once(now=start)
+    snapshot = scheduler.scheduled_scans()
+    assert snapshot == {server.id: start + timedelta(seconds=60)}
+    snapshot.clear()
+    assert scheduler.scheduled_scans() == {server.id: start + timedelta(seconds=60)}
     second = await scheduler.run_once(now=start + timedelta(seconds=30))
     forced = await scheduler.run_once(now=start + timedelta(seconds=31), force_server_id=server.id)
 

@@ -86,6 +86,32 @@ def test_setup_login_cookie_csrf_and_logout(client) -> None:
     assert http.get("/api/v1/admin/notifications/summary").status_code == 401
 
 
+def test_dashboard_reports_runtime_schedule_only_for_enabled_servers(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, engine = client
+    setup_and_login(http)
+    with Session(engine) as session:
+        session.add_all(
+            [
+                Server(name="Active", base_url="https://books.example", api_key_encrypted="secret", enabled=True),
+                Server(name="Disabled", base_url="https://books.example", api_key_encrypted="secret", enabled=False),
+            ]
+        )
+        session.commit()
+    without_runtime = http.get("/api/v1/admin/dashboard").json()
+    assert without_runtime["runtime_enabled"] is False
+    assert all(server["next_scan_at"] is None for server in without_runtime["servers"])
+
+    class Scheduled:
+        def scheduled_scans(self):
+            return {1: "scheduled", 2: "stale disabled"}
+
+    monkeypatch.setitem(app.state._state, "runtime_scheduler", Scheduled())
+    result = http.get("/api/v1/admin/dashboard").json()
+    assert result["runtime_enabled"] is True
+    assert [server["next_scan_at"] for server in result["servers"]] == ["scheduled", None]
+    assert "secret" not in str(result)
+
+
 def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
     http, engine = client
     assert http.get("/api/v1/admin/arrivals").status_code == 401
