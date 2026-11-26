@@ -84,6 +84,8 @@ Object.assign(messages.de, {nextScan: "Nächster geplanter Scan", runtimeOff: "A
 Object.assign(messages.en, {nextScan: "Next scheduled scan", runtimeOff: "Automatic processing disabled", runtimeOn: "Automatic processing enabled", nextScanHint: "Scan times are scheduled estimates and may be delayed by ongoing work."});
 Object.assign(messages.de, {scanHistory: "Scan-Protokoll", scanHistoryHelp: "Ergebnisse einzelner Bibliotheksscans in UTC. Verbindungsdaten und Fehlermeldungen werden nicht angezeigt.", scanFrom: "Abgeschlossen ab (UTC)", scanTo: "Abgeschlossen bis (UTC)", scanPages: "Scan-Protokoll Seiten", scanStarted: "Begonnen", scanCompleted: "Abgeschlossen", scanSeen: "Medien erfasst", scanAdded: "Neu erfasst", noScans: "Keine Scans für diese Auswahl."});
 Object.assign(messages.en, {scanHistory: "Scan history", scanHistoryHelp: "Results of individual library scans in UTC. Connection details and error messages are not shown.", scanFrom: "Completed from (UTC)", scanTo: "Completed through (UTC)", scanPages: "Scan history pages", scanStarted: "Started", scanCompleted: "Completed", scanSeen: "Media seen", scanAdded: "Newly recorded", noScans: "No scans match these filters."});
+Object.assign(messages.de, {latestArrivals: "Zuletzt erkannte Medien", latestArrivalsHelp: "Nur erkannte Neuzugänge; die stille Ersterfassung ist nicht enthalten.", allArrivals: "Alle Neuzugänge anzeigen"});
+Object.assign(messages.en, {latestArrivals: "Recently detected media", latestArrivalsHelp: "Detected arrivals only; the silent initial baseline is excluded.", allArrivals: "Show all arrivals"});
 messages.de.loadCover = "Cover laden";
 messages.en.loadCover = "Load cover";
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
@@ -103,6 +105,7 @@ let deliveries = [];
 let deliveryOffset = 0, deliveryRequest = 0;
 let templates = [];
 let arrivals = [];
+let latestArrivals = [];
 let arrivalsRequest = 0;
 let arrivalsOffset = 0;
 let scanRows = [], scanOffset = 0, scanRequest = 0, scanHasMore = false;
@@ -141,6 +144,7 @@ function translate() {
   }
   populateArrivalFilters();
   renderArrivals();
+  renderLatestArrivals();
   renderScanHistory();
   updatePreviewSender();
 }
@@ -309,6 +313,7 @@ async function refresh() {
   populateScanFilters();
   await loadArrivals();
   await loadScanHistory();
+  latestArrivals = await call("/arrivals?limit=5"); renderLatestArrivals();
   populateTemplateSelector();
   renderManagement();
   renderDeliveries();
@@ -341,6 +346,20 @@ function renderOverview(data) {
     item.textContent = [server.name, server.enabled ? null : strings().scanDisabled, status, server.last_library_scan_at, server.next_scan_at ? strings().nextScan + ": " + server.next_scan_at : null].filter(Boolean).join(" · "); scans.append(item);
   }
   document.querySelector("#runtime-status").textContent = data.runtime_enabled ? strings().runtimeOn : strings().runtimeOff;
+}
+function renderLatestArrivals() {
+  const container = document.querySelector("#overview-arrivals"); container.replaceChildren();
+  if (!latestArrivals.length) { const empty = document.createElement("p"); empty.textContent = strings().noArrivals; container.append(empty); return; }
+  for (const arrival of latestArrivals) {
+    const card = document.createElement("article"); card.className = "library-card";
+    const image = document.createElement("img"); image.className = "arrival-grid-cover"; image.loading = "lazy"; image.alt = strings().coverAlt;
+    image.addEventListener("error", () => { image.removeAttribute("src"); image.alt = strings().coverUnavailable; });
+    image.src = "/api/v1/admin/arrivals/" + encodeURIComponent(arrival.event_id) + "/cover";
+    const title = document.createElement("h4"); title.textContent = arrival.title || "—";
+    const authors = document.createElement("p"); authors.textContent = arrival.authors.join(", ");
+    const source = document.createElement("p"); source.textContent = [arrival.server_name, arrival.library_name].join(" · ");
+    card.append(image, title, authors, source); container.append(card);
+  }
 }
 function fillFilter(select, entries, previous) {
   select.replaceChildren();

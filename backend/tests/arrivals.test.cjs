@@ -34,3 +34,20 @@ test("arrival views keep details and use authenticated lazy cover URLs", () => {
   cover.handlers.error(); assert.equal(cover.alt, "No cover");
   assert.equal(descendants(entries["#arrivals-list"], "details").length, 1);
 });
+
+test("dashboard recent arrivals use only local authenticated cover paths", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/static/admin.js"), "utf8");
+  const start = source.indexOf("function renderLatestArrivals("), end = source.indexOf("function fillFilter(", start);
+  assert.ok(start >= 0 && end > start);
+  const container = node("div"), arrival = {event_id: 7, title: "<b>Title</b>", authors: ["Author"], server_name: "Server", library_name: "Library"};
+  const context = {document: {querySelector: () => container, createElement: node}, strings: () => ({coverAlt: "Cover", coverUnavailable: "Unavailable", noArrivals: "None"}), latestArrivals: [arrival], encodeURIComponent};
+  vm.runInNewContext(source.slice(start, end), context);
+  context.renderLatestArrivals();
+  assert.equal(descendants(container, "h4")[0].textContent, arrival.title);
+  const cover = descendants(container, "img")[0];
+  assert.equal(cover.src, "/api/v1/admin/arrivals/7/cover");
+  assert.equal(cover.loading, "lazy");
+  cover.handlers.error(); assert.equal(cover.alt, "Unavailable");
+  context.latestArrivals = []; context.renderLatestArrivals();
+  assert.equal(descendants(container, "p")[0].textContent, "None");
+});

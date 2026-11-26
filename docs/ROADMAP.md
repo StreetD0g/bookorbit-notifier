@@ -51,6 +51,7 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [x] Provide list, table and lazily loaded cover-grid views for detected arrivals, with existing filters and detail history.
 - [x] Show the latest recorded library-scan result and the runtime's next scheduled scan per configured server when available.
 - [x] Add authenticated, paginated library-scan history with server, library, result and UTC-date filters; omit stored error text.
+- [x] Show recently detected arrivals and lazily loaded covers on the overview without including the initial baseline.
 - [ ] Add the full application log viewer, severity filters and automatic log rotation.
 - [ ] Build setup, login, dashboard, server, library, webhook, history, log, settings, and template-editor views.
 - [ ] Provide German and English text, responsive layout, and dark mode by default.
