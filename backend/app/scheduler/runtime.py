@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
@@ -18,6 +19,8 @@ from app.scanner.polling import ServerScanReport
 from app.services.metadata import MetadataRefreshReport
 
 type SessionFactory = Callable[[], Session]
+
+logger = logging.getLogger(__name__)
 
 
 class SourceClientFactory(Protocol):
@@ -101,7 +104,12 @@ class RuntimeScheduler:
         if tick_seconds <= 0:
             raise ValueError("Scheduler tick interval must be positive")
         while not stop_event.is_set():
-            await self.run_once()
+            try:
+                await self.run_once()
+            except Exception as error:
+                # A transient database/transport failure must not permanently stop polling.
+                # Keep raw adapter messages out of logs because they may contain credentials.
+                logger.warning("Runtime scheduler tick failed (%s)", type(error).__name__)
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=tick_seconds)
             except TimeoutError:

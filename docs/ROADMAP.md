@@ -25,7 +25,8 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [x] Implement transactional baseline reconciliation and `(server_id, bookorbit_book_id)` de-duplication.
 - [x] Implement client-driven paginated source reconciliation and a per-server scan lock.
 - [x] Implement the configurable recurring polling scheduler and core manual-scan trigger.
-- [ ] Wire the scheduler and authenticated manual-scan control into the administrator API/runtime lifecycle.
+- [x] Wire the opt-in scheduler into the application runtime lifecycle after an explicit migration and encryption-key check.
+- [ ] Add the authenticated administrator API/UI control for manual scans.
 - [x] Implement transactional per-webhook outbox state transitions, exponential backoff, and Discord retry-hint handling.
 - [x] Implement configurable metadata delay, bounded detail refresh, deadline release, and stale-send recovery.
 - [x] Implement the outbound Discord delivery worker over the persistent outbox.

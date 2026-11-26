@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +16,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BOOKORBIT_NOTIFIER_", extra="ignore")
 
     poc_endpoints_enabled: bool = False
+    database_url: str = "sqlite:///./data/bookorbit-notifier.db"
+    encryption_key: SecretStr | None = None
+    runtime_enabled: bool = False
 
 
 @lru_cache

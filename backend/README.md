@@ -4,6 +4,8 @@ The initial backend is a technical proof of concept. It deliberately contains on
 
 The Phase-2 schema is managed exclusively by Alembic. From `backend/`, run `alembic upgrade head`; set `BOOKORBIT_NOTIFIER_DATABASE_URL` to select the target SQLite file. The shipped default is only a local development path. Never create tables from application code in production.
 
+The scanner/delivery runtime remains disabled until `BOOKORBIT_NOTIFIER_RUNTIME_ENABLED=true`. Enabling it also requires `BOOKORBIT_NOTIFIER_ENCRYPTION_KEY` with a dedicated Fernet key supplied by the deployment secret store. Migrate the database first; startup deliberately does not create or migrate tables.
+
 Run locally after installing the project dependencies:
 
 ```text
