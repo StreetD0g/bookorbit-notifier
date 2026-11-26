@@ -22,6 +22,7 @@ from app.database.models import (
     NotificationQueueItem,
     NotificationTemplate,
     QueueStatus,
+    ScanHistory,
     Server,
     Webhook,
 )
@@ -656,6 +657,24 @@ async def sync_libraries(
     return {"created": result.created, "updated": result.updated}
 
 
+@router.post("/servers/{server_id}/test")
+async def test_server_connection(
+    request: Request, server_id: int, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict:
+    """Verify authentication and accessible libraries without changing source or notifier data."""
+
+    _configuration(request)
+    cipher = SecretCipher(get_settings().encryption_key.get_secret_value())  # type: ignore[union-attr]
+    factory = EncryptedBookOrbitClientFactory(request.app.state.session_factory, cipher)
+    try:
+        async with factory.connect(server_id) as client:
+            identity = await client.get_identity()
+            libraries = await client.list_libraries()
+    except (BookOrbitApiError, ValueError) as error:
+        raise HTTPException(status_code=502, detail="BookOrbit connection test failed") from error
+    return {"status": "ok", "authentication_method": identity.authentication_method, "library_count": len(libraries)}
+
+
 @router.get("/webhooks")
 def list_webhooks(request: Request, _auth: Annotated[AuthenticationService, Depends(_authenticated)]) -> list[dict]:
     """Never include webhook URLs or ciphertext in the response."""
@@ -732,6 +751,15 @@ def list_libraries(request: Request, _auth: Annotated[AuthenticationService, Dep
 
     with request.app.state.session_factory() as session:
         rows = session.scalars(select(Library).order_by(Library.server_id, Library.name, Library.id)).all()
+        book_counts = dict(session.execute(select(Book.library_id, func.count(Book.id)).group_by(Book.library_id)).all())
+        event_counts = dict(
+            session.execute(
+                select(Event.library_id, func.count(Event.id)).where(Event.event_type == EventType.BOOK_ADDED).group_by(Event.library_id)
+            ).all()
+        )
+        latest_scans = dict(
+            session.execute(select(ScanHistory.library_id, func.max(ScanHistory.completed_at)).group_by(ScanHistory.library_id)).all()
+        )
         return [
             {
                 "id": row.id,
@@ -744,6 +772,9 @@ def list_libraries(request: Request, _auth: Annotated[AuthenticationService, Dep
                 "batch_window_seconds": row.batch_window_seconds,
                 "daily_summary_time": row.daily_summary_time,
                 "timezone": row.timezone,
+                "book_count": book_counts.get(row.id, 0),
+                "arrival_count": event_counts.get(row.id, 0),
+                "last_scan": latest_scans.get(row.id),
             }
             for row in rows
         ]

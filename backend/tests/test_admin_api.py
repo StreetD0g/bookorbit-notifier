@@ -15,9 +15,10 @@ from app.database.base import Base
 from app.database.models import Book, Event, EventType, Library, NotificationQueueItem, QueueStatus, Server, Webhook
 from app.database.session import create_database_engine
 from app.main import app
+from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.providers.notifications.discord.client import DiscordDeliveryError
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
-from app.schemas.bookorbit import BookOrbitLibrary, CoverImage
+from app.schemas.bookorbit import BookOrbitIdentity, BookOrbitLibrary, CoverImage
 
 ORIGIN = "https://notifier.example"
 SETUP_TOKEN = "setup-token-for-testing-only-123456789"
@@ -128,6 +129,8 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
         server_id = server.id
         library_id = library.id
     arrivals = http.get(f"/api/v1/admin/arrivals?server_id={server_id}&library_id={library_id}").json()
+    library_summary = http.get("/api/v1/admin/libraries").json()[0]
+    assert library_summary["book_count"] == 2 and library_summary["arrival_count"] == 1 and library_summary["last_scan"] is not None
     assert len(arrivals) == 1 and arrivals[0]["title"] == "New" and arrivals[0]["delivery_statuses"] == ["SENT"]
     detail = http.get(f"/api/v1/admin/arrivals/{arrivals[0]['event_id']}")
     assert detail.status_code == 200 and detail.json()["metadata"]["formats"] == ["epub"]
@@ -271,6 +274,9 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
         assert "fixture-token" not in session.get(Webhook, webhook_id).url_encrypted
 
     class FakeClient:
+        async def get_identity(self):
+            return BookOrbitIdentity(authenticationMethod="api_key", username="should-not-leak")
+
         async def list_libraries(self):
             return [BookOrbitLibrary(id=12, name="Books")]
 
@@ -279,9 +285,27 @@ def test_server_webhook_and_library_management_is_redacted_and_csrf_protected(cl
         yield FakeClient()
 
     monkeypatch.setattr("app.api.admin.EncryptedBookOrbitClientFactory.connect", fake_connect)
+    probe = http.post(f"/api/v1/admin/servers/{server_id}/test", headers=headers)
+    assert probe.json() == {"status": "ok", "authentication_method": "api_key", "library_count": 1}
+    assert "should-not-leak" not in probe.text and "bok_fixture_secret" not in probe.text
+    assert http.get("/api/v1/admin/libraries").json() == []
+
+    class FailingClient:
+        async def get_identity(self):
+            raise BookOrbitApiError("identity", 401)
+
+    @asynccontextmanager
+    async def failing_connect(_self, _server_id):
+        yield FailingClient()
+
+    monkeypatch.setattr("app.api.admin.EncryptedBookOrbitClientFactory.connect", failing_connect)
+    failed_probe = http.post(f"/api/v1/admin/servers/{server_id}/test", headers=headers)
+    assert failed_probe.status_code == 502 and "bok_fixture_secret" not in failed_probe.text
+    monkeypatch.setattr("app.api.admin.EncryptedBookOrbitClientFactory.connect", fake_connect)
     assert http.post(f"/api/v1/admin/servers/{server_id}/sync-libraries", headers=headers).json() == {"created": 1, "updated": 0}
     library = http.get("/api/v1/admin/libraries").json()[0]
     assert library["monitored"] is False
+    assert library["book_count"] == 0 and library["arrival_count"] == 0 and library["last_scan"] is None
     routing = {"monitored": True, "webhook_ids": [webhook_id], "template_id": None}
     assert http.put(f"/api/v1/admin/libraries/{library['id']}/routing", headers=headers, json=routing).status_code == 200
     assert http.get("/api/v1/admin/libraries").json()[0]["webhook_ids"] == [webhook_id]

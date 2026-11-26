@@ -52,6 +52,8 @@ Object.assign(messages.de, {details: "Details und Zustellhistorie", historyTrunc
 Object.assign(messages.en, {details: "Details and delivery history", historyTruncated: "Further older delivery attempts are not displayed here.", title: "Title", subtitle: "Subtitle", authors: "Authors", series: "Series", series_index: "Series number", genres: "Genres", languageField: "Language", formats: "Formats", narrators: "Narrators", duration_seconds: "Duration (seconds)", description: "Description", isbn10: "ISBN-10", isbn13: "ISBN-13", publisher: "Publisher", published_date: "Published date", published_year: "Published year", page_count: "Pages", tags: "Tags", edition_name: "Edition"});
 Object.assign(messages.de, {showCover: "Cover laden", coverUnavailable: "Cover nicht verfügbar", coverAlt: "Cover des Mediums"});
 Object.assign(messages.en, {showCover: "Load cover", coverUnavailable: "Cover unavailable", coverAlt: "Media cover"});
+Object.assign(messages.de, {testConnection: "Verbindung prüfen", connectionOk: "BookOrbit-Verbindung erfolgreich.", knownBooks: "Bekannte Medien", libraryArrivals: "Erkannte Neuzugänge", lastScan: "Letzter Scan"});
+Object.assign(messages.en, {testConnection: "Test connection", connectionOk: "BookOrbit connection successful.", knownBooks: "Known media", libraryArrivals: "Detected arrivals", lastScan: "Last scan"});
 let counts = null;
 let overview = null;
 let scopes = {libraries: [], webhooks: []};
@@ -316,6 +318,8 @@ function renderManagement() {
     item.append(actionButton(server.enabled ? strings().disable : strings().enable, () => call("/servers/" + server.id + "/enabled", mutationOptions({enabled: !server.enabled}))));
     const sync = actionButton(strings().syncLibraries, () => call("/servers/" + server.id + "/sync-libraries", {...mutationOptions({}), method: "POST"}));
     sync.disabled = !server.enabled; item.append(sync);
+    const test = actionButton(strings().testConnection, () => call("/servers/" + server.id + "/test", {...mutationOptions({}), method: "POST"}), strings().connectionOk);
+    test.disabled = !server.enabled; item.append(test);
     const scan = actionButton(strings().manualScan, () => call("/servers/" + server.id + "/scan", {...mutationOptions({}), method: "POST"}));
     scan.disabled = !server.enabled; item.append(scan);
     const details = document.createElement("details"), summary = document.createElement("summary"), form = document.createElement("form");
@@ -369,6 +373,8 @@ function renderManagement() {
     const card = document.createElement("div"); card.className = "library-card";
     const heading = document.createElement("h3"), server = servers.find(item => item.id === library.server_id);
     heading.textContent = (server?.name || "") + " — " + library.name; card.append(heading);
+    const facts = document.createElement("p");
+    facts.textContent = strings().knownBooks + ": " + library.book_count + " · " + strings().libraryArrivals + ": " + library.arrival_count + " · " + strings().lastScan + ": " + (library.last_scan || "—"); card.append(facts);
     const monitorLabel = document.createElement("label"), monitored = document.createElement("input");
     monitored.type = "checkbox"; monitored.checked = library.monitored; monitorLabel.append(monitored, document.createTextNode(" " + strings().monitored)); card.append(monitorLabel);
     const legend = document.createElement("p"); legend.textContent = strings().destination; card.append(legend);
