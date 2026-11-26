@@ -23,7 +23,8 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [x] Add SQLAlchemy models and Alembic migrations for servers, libraries, books, events, scan history, and outbox rows.
 - [x] Enable SQLite WAL and transaction-safe repository operations.
 - [x] Implement transactional baseline reconciliation and `(server_id, bookorbit_book_id)` de-duplication.
-- [ ] Implement the BookOrbit polling scheduler, per-server scan lock, and paginated source reconciliation.
+- [x] Implement client-driven paginated source reconciliation and a per-server scan lock.
+- [ ] Implement the configurable recurring polling scheduler and manual-scan trigger.
 - [ ] Implement metadata delay, retry state machine, per-webhook outbox retries, and Discord 429 handling.
 - [ ] Add integration tests for restart, partial scan, source outage, and Discord outage behaviour.
 
