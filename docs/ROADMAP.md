@@ -30,7 +30,8 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [x] Implement configurable metadata delay, bounded detail refresh, deadline release, and stale-send recovery.
 - [x] Implement the outbound Discord delivery worker over the persistent outbox.
 - [ ] Add authenticated delivery/recovery observability and manual retry controls.
-- [ ] Add integration tests for restart, partial scan, source outage, and Discord outage behaviour.
+- [x] Add SQLite- and HTTPX-simulated integration tests for restart recovery, partial scans, source outage, and Discord outage behaviour.
+- [ ] Validate the same acceptance scenarios against a real BookOrbit release and a disposable Discord webhook before production use.
 
 ## Phase 3 – multi-server routing
 
