@@ -137,6 +137,9 @@
       <section aria-labelledby="preview-heading" class="preview-editor">
         <h2 id="preview-heading" data-text="previewTitle">Discord-Live-Vorschau</h2>
         <p data-text="previewHint">Die Vorschau zeigt Beispieldaten. Änderungen werden erst beim Speichern übernommen und nicht versendet.</p>
+        <p data-text="avatarPrivacy">Profilbilder werden für die Vorschau direkt im Browser vom Bildanbieter geladen. Der Anbieter sieht dabei deine IP-Adresse.</p>
+        <label for="preview-webhook" data-text="previewWebhook">Webhook für Profilvorschau</label><select id="preview-webhook"></select>
+        <label for="preview-library" data-text="previewLibrary">Bibliothek für Profilvorschau</label><select id="preview-library"></select>
         <label for="template-select" data-text="templateSelect">Vorlage</label>
         <select id="template-select"><option value="" data-text="newTemplate">Neue Vorlage</option></select>
         <label for="template-name" data-text="templateName">Vorlagenname</label>
@@ -153,8 +156,8 @@
         <button type="button" id="insert-variable" data-text="insertVariable">In Beschreibung einfügen</button>
         <button type="button" id="save-template" data-text="saveTemplate">Vorlage speichern</button>
         <div class="discord-preview" aria-live="polite">
-          <div class="discord-avatar" aria-hidden="true">B</div>
-          <div><strong id="preview-sender">BookOrbit Notifier</strong><div class="discord-embed"><strong id="preview-rendered-title"></strong><p id="preview-rendered-description"></p><small id="preview-rendered-footer"></small></div></div>
+          <div class="discord-avatar" aria-hidden="true"><span id="preview-avatar-fallback">B</span><img id="preview-avatar-image" alt="" referrerpolicy="no-referrer" hidden></div>
+          <div><strong id="preview-sender">BookOrbit Notifier</strong><p id="preview-avatar-status"></p><div class="discord-embed"><strong id="preview-rendered-title"></strong><p id="preview-rendered-description"></p><small id="preview-rendered-footer"></small></div></div>
         </div>
         <p id="preview-error" role="status"></p>
       </section>

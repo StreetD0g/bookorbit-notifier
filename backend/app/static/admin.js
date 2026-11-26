@@ -56,11 +56,22 @@ Object.assign(messages.de, {showCover: "Cover laden", coverUnavailable: "Cover n
 Object.assign(messages.en, {showCover: "Load cover", coverUnavailable: "Cover unavailable", coverAlt: "Media cover"});
 Object.assign(messages.de, {testConnection: "Verbindung prüfen", connectionOk: "BookOrbit-Verbindung erfolgreich.", knownBooks: "Bekannte Medien", libraryArrivals: "Erkannte Neuzugänge", lastScan: "Letzter Scan"});
 Object.assign(messages.en, {testConnection: "Test connection", connectionOk: "BookOrbit connection successful.", knownBooks: "Known media", libraryArrivals: "Detected arrivals", lastScan: "Last scan"});
+Object.assign(messages.de, {previewWebhook: "Webhook für Profilvorschau", previewLibrary: "Bibliothek für Profilvorschau", noContext: "Keine Auswahl", previewAvatarCustom: "Profilbild-URL konfiguriert (Bildvorschau noch nicht verfügbar)", previewAvatarOriginal: "Originales Webhook-Profilbild (nicht abgerufen)", previewProfileInvalid: "Absenderprofil ungültig"});
+Object.assign(messages.en, {previewWebhook: "Webhook for profile preview", previewLibrary: "Library for profile preview", noContext: "No selection", previewAvatarCustom: "Avatar URL configured (image preview not yet available)", previewAvatarOriginal: "Original webhook avatar (not retrieved)", previewProfileInvalid: "Invalid sender profile"});
+messages.de.previewAvatarCustom = "Benutzerdefiniertes Profilbild";
+messages.en.previewAvatarCustom = "Custom avatar";
+Object.assign(messages.de, {previewAvatarFailed: "Profilbild konnte im Browser nicht geladen werden."});
+Object.assign(messages.en, {previewAvatarFailed: "The browser could not load the avatar."});
+Object.assign(messages.de, {avatarPrivacy: "Profilbilder werden für die Vorschau direkt im Browser vom Bildanbieter geladen. Der Anbieter sieht dabei deine IP-Adresse."});
+Object.assign(messages.en, {avatarPrivacy: "Avatar images are loaded directly from their host in your browser. The host can see your IP address."});
+messages.de.previewOriginal = "Originaler Webhook-Name (nicht abgerufen)";
+messages.en.previewOriginal = "Original webhook name (not retrieved)";
 let counts = null;
 let overview = null;
 let scopes = {libraries: [], webhooks: []};
 let profileRequest = 0;
 let previewRequest = 0, previewTimer;
+let senderPreviewRequest = 0, senderPreviewTimer;
 let servers = [], webhooks = [], libraries = [];
 let deliveries = [];
 let deliveryOffset = 0, deliveryRequest = 0;
@@ -107,6 +118,7 @@ function profilePath() {
 }
 async function loadProfile() {
   const request = ++profileRequest;
+  ++senderPreviewRequest;
   const form = document.querySelector("#profile-form");
   form.hidden = true;
   if (document.querySelector("#profile-scope").value !== "global" && !document.querySelector("#profile-target").value) return;
@@ -120,8 +132,42 @@ async function loadProfile() {
   updatePreviewSender();
 }
 function updatePreviewSender() {
-  const choice = document.querySelector("#username-choice").value;
-  document.querySelector("#preview-sender").textContent = choice === "custom" ? document.querySelector("#username-value").value : strings().previewOriginal;
+  clearTimeout(senderPreviewTimer);
+  const request = ++senderPreviewRequest;
+  senderPreviewTimer = setTimeout(async () => {
+    const scope = document.querySelector("#profile-scope").value, target = document.querySelector("#profile-target").value;
+    if (scope !== "global" && !target) return;
+    const field = name => { const choice = document.querySelector("#" + name + "-choice").value; return {choice, value: choice === "custom" ? document.querySelector("#" + name + "-value").value : null}; };
+    const webhook = scope === "webhook" ? target : document.querySelector("#preview-webhook").value;
+    const library = scope === "library" ? target : document.querySelector("#preview-library").value;
+    const payload = {scope, scope_id: scope === "global" ? null : Number(target), webhook_id: webhook ? Number(webhook) : null, library_id: library ? Number(library) : null, username: field("username"), avatar_url: field("avatar")};
+    try {
+      const result = await call("/sender-profile-preview", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": cookie("bookorbit_csrf")}, body: JSON.stringify(payload)});
+      if (request !== senderPreviewRequest) return;
+      document.querySelector("#preview-sender").textContent = result.username ?? strings().previewOriginal;
+      document.querySelector("#preview-avatar-status").textContent = result.avatar_url ? strings().previewAvatarCustom : strings().previewAvatarOriginal;
+      const avatar = document.querySelector("#preview-avatar-image"), fallback = document.querySelector("#preview-avatar-fallback");
+      avatar.hidden = !result.avatar_url; fallback.hidden = Boolean(result.avatar_url);
+      if (result.avatar_url) avatar.src = result.avatar_url; else avatar.removeAttribute("src");
+    } catch { if (request === senderPreviewRequest) document.querySelector("#preview-sender").textContent = strings().previewProfileInvalid; }
+  }, 250);
+}
+document.querySelector("#preview-avatar-image").addEventListener("error", () => {
+  document.querySelector("#preview-avatar-image").hidden = true;
+  document.querySelector("#preview-avatar-fallback").hidden = false;
+  document.querySelector("#preview-avatar-status").textContent = strings().previewAvatarFailed;
+});
+function populatePreviewContexts() {
+  for (const [selector, entries] of [["#preview-webhook", scopes.webhooks], ["#preview-library", scopes.libraries]]) {
+    const select = document.querySelector(selector), previous = select.value; select.replaceChildren();
+    const empty = document.createElement("option"); empty.value = ""; empty.textContent = strings().noContext; select.append(empty);
+    for (const entry of entries) { const option = document.createElement("option"); option.value = String(entry.id); option.textContent = entry.server_name ? entry.server_name + " — " + entry.name : entry.name; select.append(option); }
+    if ([...select.options].some(option => option.value === previous)) select.value = previous;
+  }
+  document.querySelector("#preview-webhook").disabled = document.querySelector("#profile-scope").value === "webhook";
+  document.querySelector("#preview-library").disabled = document.querySelector("#profile-scope").value === "library";
+  if (document.querySelector("#preview-webhook").disabled) document.querySelector("#preview-webhook").value = document.querySelector("#profile-target").value;
+  if (document.querySelector("#preview-library").disabled) document.querySelector("#preview-library").value = document.querySelector("#profile-target").value;
 }
 async function renderPreview() {
   const request = ++previewRequest;
@@ -152,6 +198,7 @@ async function selectScope() {
   target.hidden = scope === "global";
   document.querySelector("#profile-target-label").hidden = target.hidden;
   document.querySelector("#profile-unavailable").hidden = scope === "global" || entries.length > 0;
+  populatePreviewContexts();
   await loadProfile();
 }
 async function refresh() {
@@ -464,9 +511,9 @@ document.querySelector("#save-template").addEventListener("click", async () => {
 });
 language.addEventListener("change", translate);
 document.querySelector("#profile-scope").addEventListener("change", () => selectScope().catch(() => { message.textContent = strings().failed; }));
-document.querySelector("#profile-target").addEventListener("change", () => loadProfile().catch(() => { message.textContent = strings().failed; }));
+document.querySelector("#profile-target").addEventListener("change", () => { populatePreviewContexts(); loadProfile().catch(() => { message.textContent = strings().failed; }); });
 for (const selector of ["#preview-title", "#preview-description", "#preview-footer"]) document.querySelector(selector).addEventListener("input", queuePreview);
-for (const selector of ["#username-choice", "#username-value"]) document.querySelector(selector).addEventListener("input", updatePreviewSender);
+for (const selector of ["#username-choice", "#username-value", "#avatar-choice", "#avatar-value", "#preview-webhook", "#preview-library"]) document.querySelector(selector).addEventListener("input", updatePreviewSender);
 document.querySelector("#insert-variable").addEventListener("click", () => {
   const input = document.querySelector("#preview-description");
   input.setRangeText("{{" + document.querySelector("#preview-variable").value + "}}", input.selectionStart, input.selectionEnd, "end");

@@ -57,6 +57,31 @@ class SenderProfileService:
                 raise ValueError("Webhook does not exist")
             return _load(session, key, DEFAULT_PROFILE if scope == "global" else SenderProfile())
 
+    def preview(
+        self, scope: str, scope_id: int | None, profile: SenderProfile, *, library_id: int | None, webhook_id: int | None
+    ) -> tuple[str | None, str | None]:
+        """Resolve one unsaved profile against explicitly selected parent contexts."""
+
+        _scope_key(scope, scope_id)
+        _validate_profile(profile)
+        if (scope == "library" and scope_id != library_id) or (scope == "webhook" and scope_id != webhook_id):
+            raise ValueError("Preview context does not match the edited profile")
+        with self._session_factory() as session:
+            if library_id is not None and session.get(Library, library_id) is None:
+                raise ValueError("Library does not exist")
+            if webhook_id is not None and session.get(Webhook, webhook_id) is None:
+                raise ValueError("Webhook does not exist")
+            library = _load(session, f"library:{library_id}", SenderProfile()) if library_id is not None else SenderProfile()
+            webhook = _load(session, f"webhook:{webhook_id}", SenderProfile()) if webhook_id is not None else SenderProfile()
+            global_profile = _load(session, "global", DEFAULT_PROFILE)
+            if scope == "library":
+                library = profile
+            elif scope == "webhook":
+                webhook = profile
+            else:
+                global_profile = profile
+            return resolve_profile(library, webhook, global_profile)
+
 
 def _scope_key(scope: str, scope_id: int | None) -> str:
     if scope == "global" and scope_id is None:

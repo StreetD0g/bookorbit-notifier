@@ -194,6 +194,13 @@ def test_sender_profiles_require_session_origin_and_csrf(client) -> None:
     payload["avatar_url"] = {"choice": "custom", "value": "https://127.0.0.1/image.png"}
     assert http.put(path, headers=headers, json=payload).status_code == 400
     assert http.get(path).json()["avatar_url"]["choice"] == "original"
+    preview = {"scope": "global", "username": {"choice": "custom", "value": "Preview only"}, "avatar_url": {"choice": "inherit"}}
+    assert http.post("/api/v1/admin/sender-profile-preview", headers={"origin": ORIGIN}, json=preview).status_code == 401
+    assert http.post("/api/v1/admin/sender-profile-preview", headers=headers, json=preview).json() == {
+        "username": "Preview only",
+        "avatar_url": None,
+    }
+    assert http.get(path).json()["username"]["value"] == "My library"
     assert http.get("/api/v1/admin/sender-profiles/library?scope_id=999").status_code == 400
 
 

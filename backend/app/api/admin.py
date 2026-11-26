@@ -73,6 +73,13 @@ class ProfileInput(BaseModel):
     avatar_url: ProfileFieldInput
 
 
+class SenderPreviewInput(ProfileInput):
+    scope: str
+    scope_id: int | None = Field(default=None, gt=0)
+    library_id: int | None = Field(default=None, gt=0)
+    webhook_id: int | None = Field(default=None, gt=0)
+
+
 class PreviewInput(BaseModel):
     title: str = Field(max_length=512)
     description: str = Field(max_length=4000)
@@ -534,6 +541,25 @@ def get_sender_profile(
         return SenderProfileService(request.app.state.session_factory).get(scope, scope_id)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/sender-profile-preview")
+def sender_profile_preview(
+    request: Request, payload: SenderPreviewInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str | None]:
+    """Preview unsaved sender values with parent precedence, without contacting Discord."""
+
+    try:
+        profile = SenderProfile(
+            username=ProfileField(payload.username.choice, payload.username.value),
+            avatar_url=ProfileField(payload.avatar_url.choice, payload.avatar_url.value),
+        )
+        username, avatar_url = SenderProfileService(request.app.state.session_factory).preview(
+            payload.scope, payload.scope_id, profile, library_id=payload.library_id, webhook_id=payload.webhook_id
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {"username": username, "avatar_url": avatar_url}
 
 
 @router.get("/profile-scopes")
