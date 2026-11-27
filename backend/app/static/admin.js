@@ -152,13 +152,34 @@ function selectView() {
 }
 window.addEventListener("hashchange", selectView);
 selectView();
+function captureManagementDrafts() {
+  // Values remain in memory only for this synchronous redraw, including password fields.
+  return new Map(Array.from(document.querySelectorAll("[data-draft-key]"), container => [container.dataset.draftKey, {
+    controls: Array.from(container.querySelectorAll("input, select, textarea"), field => ({value: field.value, checked: field.checked})),
+    open: Array.from(container.querySelectorAll("details"), detail => detail.open)
+  }]));
+}
+function restoreManagementDrafts(drafts) {
+  for (const container of document.querySelectorAll("[data-draft-key]")) {
+    const draft = drafts.get(container.dataset.draftKey);
+    if (!draft) continue;
+    container.querySelectorAll("input, select, textarea").forEach((field, index) => {
+      if (!draft.controls[index]) return;
+      field.value = draft.controls[index].value;
+      if (field.type === "checkbox" || field.type === "radio") field.checked = draft.controls[index].checked;
+    });
+    container.querySelectorAll("details").forEach((detail, index) => { detail.open = Boolean(draft.open[index]); });
+  }
+}
 function translate() {
+  const managementDrafts = captureManagementDrafts();
   document.documentElement.lang = language.value;
   document.querySelectorAll("[data-text]").forEach(element => { element.textContent = strings()[element.dataset.text]; });
   document.querySelectorAll("[data-label]").forEach(element => { element.setAttribute("aria-label", strings()[element.dataset.label]); });
   if (counts) renderCounts(counts);
   if (overview) renderOverview(overview);
   renderManagement();
+  restoreManagementDrafts(managementDrafts);
   renderDeliveries();
   populateTemplateSelector();
   renderMetadataFields();
@@ -644,7 +665,7 @@ function actionButton(label, action, success = null) {
 function renderManagement() {
   const serverList = document.querySelector("#server-list"); serverList.replaceChildren();
   for (const server of servers) {
-    const item = document.createElement("li"); item.append(document.createTextNode(server.name + " — " + server.base_url));
+    const item = document.createElement("li"); item.dataset.draftKey = "server:" + server.id; item.append(document.createTextNode(server.name + " — " + server.base_url));
     item.append(actionButton(server.enabled ? strings().disable : strings().enable, () => call("/servers/" + server.id + "/enabled", mutationOptions({enabled: !server.enabled}))));
     const sync = actionButton(strings().syncLibraries, () => call("/servers/" + server.id + "/sync-libraries", {...mutationOptions({}), method: "POST"}));
     sync.disabled = !server.enabled; item.append(sync);
@@ -692,7 +713,7 @@ function renderManagement() {
   }
   const webhookList = document.querySelector("#webhook-list"); webhookList.replaceChildren();
   for (const webhook of webhooks) {
-    const item = document.createElement("li"); item.append(document.createTextNode(webhook.name));
+    const item = document.createElement("li"); item.dataset.draftKey = "webhook:" + webhook.id; item.append(document.createTextNode(webhook.name));
     const label = document.createElement("label"), selection = document.createElement("select"); label.textContent = " " + strings().testProfile + " ";
     const standard = document.createElement("option"); standard.value = ""; standard.textContent = strings().defaultProfile; selection.append(standard);
     for (const library of libraries.filter(entry => entry.webhook_ids.includes(webhook.id))) {
@@ -733,7 +754,7 @@ function renderManagement() {
   }
   const libraryList = document.querySelector("#library-list"); libraryList.replaceChildren();
   for (const library of libraries) {
-    const card = document.createElement("div"); card.className = "library-card";
+    const card = document.createElement("div"); card.className = "library-card"; card.dataset.draftKey = "library:" + library.id;
     const heading = document.createElement("h3"), server = servers.find(item => item.id === library.server_id);
     heading.textContent = (server?.name || "") + " — " + library.name; card.append(heading);
     const facts = document.createElement("p");

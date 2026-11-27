@@ -39,3 +39,28 @@ test("navigation selects the requested section and retains unsaved controls", ()
     assert.ok(groups["[data-view]"].every(item => item.draft === "unsaved"));
   }
 });
+
+test("language redraw preserves management drafts only for matching records", () => {
+  function container(key, values, open = []) {
+    return {dataset: {draftKey: key}, controls: values.map(([type, value, checked]) => ({type, value, checked})), details: open.map(value => ({open: value})),
+      querySelectorAll(selector) { return selector === "details" ? this.details : this.controls; }};
+  }
+  const old = [container("server:1", [["password", "temporary-key", false], ["checkbox", "on", false]], [true]),
+    container("library:1", [["select-one", "BATCH", false], ["number", "123", false]])];
+  let active = old;
+  const context = {document: {querySelectorAll: () => active}};
+  const start = source.indexOf("function captureManagementDrafts("), end = source.indexOf("function translate()", start);
+  assert.ok(start >= 0 && end > start);
+  vm.runInNewContext(source.slice(start, end), context);
+  const drafts = context.captureManagementDrafts();
+  active = [container("library:1", [["select-one", "SINGLE", false], ["number", "300", false]]),
+    container("server:1", [["password", "", false], ["checkbox", "on", true]], [false]),
+    container("server:2", [["password", "", false]])];
+  context.restoreManagementDrafts(drafts);
+  assert.equal(active[0].controls[0].value, "BATCH");
+  assert.equal(active[0].controls[1].value, "123");
+  assert.equal(active[1].controls[0].value, "temporary-key");
+  assert.equal(active[1].controls[1].checked, false);
+  assert.equal(active[1].details[0].open, true);
+  assert.equal(active[2].controls[0].value, "");
+});
