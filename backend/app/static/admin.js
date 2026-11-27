@@ -28,6 +28,8 @@ Object.assign(messages.de, {history: "Zustellhistorie", historyHelp: "Die neuest
 Object.assign(messages.en, {history: "Delivery history", historyHelp: "The latest 50 deliveries. Resending a delivered notification creates another Discord message.", attempts: "Attempts", detectedAt: "Detected", sentAt: "Sent", lastError: "Last error", discordId: "Discord message ID", retryAction: "Retry", resendConfirm: "This notification was already sent. Send another Discord message?", showHistory: "Show attempts"});
 Object.assign(messages.de, {historyHelp: "Zustellungen in Seiten zu je 50. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht."});
 Object.assign(messages.en, {historyHelp: "Deliveries in pages of 50. Resending a delivered notification creates another Discord message."});
+Object.assign(messages.de, {noDeliveries: "Keine Zustellungen für diese Auswahl."});
+Object.assign(messages.en, {noDeliveries: "No deliveries match this selection."});
 Object.assign(messages.de, {exportHistory: "Zustellhistorie als CSV herunterladen", exportHistoryHint: "Der Export enthält höchstens die neuesten 10.000 Einträge der aktuellen Filter und keine Zugangsdaten oder Fehlertexte."});
 Object.assign(messages.en, {exportHistory: "Download delivery history as CSV", exportHistoryHint: "The export contains at most the latest 10,000 entries matching the current filters and excludes credentials and error text."});
 Object.assign(messages.de, {previewHint: "Die Vorschau zeigt Beispieldaten. Änderungen werden erst beim Speichern übernommen und nicht versendet.", templateSelect: "Vorlage", newTemplate: "Neue Vorlage", templateName: "Vorlagenname", saveTemplate: "Vorlage speichern", libraryTemplate: "Vorlage für diese Bibliothek", defaultTemplate: "Standardvorlage"});
@@ -86,6 +88,8 @@ Object.assign(messages.de, {settings: "Settings", sectionNavigation: "Bereichsna
 Object.assign(messages.en, {settings: "Settings", sectionNavigation: "Section navigation"});
 Object.assign(messages.de, {arrivalView: "Ansicht", arrivalList: "Liste", arrivalTable: "Tabelle", arrivalGrid: "Cover-Grid", arrivalSource: "Quelle", arrivalDate: "Erkannt", arrivalStatus: "Status"});
 Object.assign(messages.en, {arrivalView: "View", arrivalList: "List", arrivalTable: "Table", arrivalGrid: "Cover grid", arrivalSource: "Source", arrivalDate: "Detected", arrivalStatus: "Status"});
+Object.assign(messages.de, {statusDetected: "Erkannt", statusCompleted: "Abgeschlossen"});
+Object.assign(messages.en, {statusDetected: "Detected", statusCompleted: "Completed"});
 Object.assign(messages.de, {serverScanOverview: "Letzter Bibliotheksscan je Server", serverScanHelp: "Der zuletzt protokollierte Bibliotheksscan ist keine Live-Verbindungsprüfung und bewertet nicht alle Bibliotheken eines Servers.", scanUnknown: "Noch kein Bibliotheksscan protokolliert", scanDisabled: "Deaktiviert", scanSucceeded: "Erfolgreich", scanPartial: "Unvollständig", scanFailed: "Fehlgeschlagen"});
 Object.assign(messages.en, {serverScanOverview: "Latest library scan per server", serverScanHelp: "The latest recorded library scan is not a live connection check and does not evaluate every library on a server.", scanUnknown: "No library scan recorded yet", scanDisabled: "Disabled", scanSucceeded: "Succeeded", scanPartial: "Incomplete", scanFailed: "Failed"});
 Object.assign(messages.de, {nextScan: "Nächster geplanter Scan", runtimeOff: "Automatische Verarbeitung deaktiviert", runtimeOn: "Automatische Verarbeitung aktiviert", nextScanHint: "Scanzeiten sind geplante Zeitpunkte und können sich durch laufende Aufgaben verzögern."});
@@ -133,6 +137,11 @@ let arrivalsOffset = 0;
 let scanRows = [], scanOffset = 0, scanRequest = 0, scanHasMore = false;
 let logRows = [], logOffset = 0, logRequest = 0, logHasMore = false, logEnabled = false;
 function strings() { return messages[language.value]; }
+function statusLabel(status) {
+  // Keep the underlying API values stable; only the visible label is translated.
+  const key = {DETECTED: "statusDetected", COMPLETED: "statusCompleted", FAILED: "failedCount"}[status] || String(status).toLowerCase();
+  return strings()[key] || status;
+}
 
 // Changing views only hides existing controls, so unsaved editor input is retained.
 const viewCategories = {overview: "overview", libraries: "bookorbit", presets: "presets", arrivals: "imports", "scan-history": "imports", history: "discord", servers: "settings", webhooks: "settings", sender: "settings", logs: "settings"};
@@ -532,7 +541,7 @@ function createArrivalDetails(arrival) {
         if (processing) {
           const title = document.createElement("strong"); title.textContent = strings().metadataProcessing; content.append(title);
           const list = document.createElement("ul");
-          const rows = [[strings().eventStatus, processing.status], [strings().metadataAttempts, processing.attempt_count]];
+          const rows = [[strings().eventStatus, statusLabel(processing.status)], [strings().metadataAttempts, processing.attempt_count]];
           if (processing.status === "WAITING_FOR_METADATA") rows.push([strings().metadataNextCheck, processing.not_before_at], [strings().metadataDeadline, processing.deadline_at]);
           if (processing.last_attempt_failed) rows.push([strings().metadataLastFailed, "✓"]);
           for (const [label, value] of rows) { if (value === null || value === undefined) continue; const item = document.createElement("li"); item.textContent = label + ": " + value; list.append(item); }
@@ -540,12 +549,12 @@ function createArrivalDetails(arrival) {
           if (processing.status === "WAITING_FOR_METADATA") { const hint = document.createElement("p"); hint.textContent = strings().processingTimesHint; content.append(hint); }
         }
         for (const delivery of data.deliveries) {
-          const title = document.createElement("strong"); title.textContent = delivery.webhook_name + " · " + delivery.status; content.append(title);
+          const title = document.createElement("strong"); title.textContent = delivery.webhook_name + " · " + statusLabel(delivery.status); content.append(title);
           const list = document.createElement("ul");
           for (const [label, value] of [[strings().nextRetry, ["RETRY", "QUEUED"].includes(delivery.status) ? delivery.next_retry_at : null], [strings().sendingStarted, delivery.status === "SENDING" ? delivery.sending_started_at : null]]) {
             if (!value) continue; const item = document.createElement("li"); item.textContent = label + ": " + value; list.append(item);
           }
-          for (const attempt of delivery.attempts) { const item = document.createElement("li"); item.textContent = [attempt.attempted_at, attempt.status, attempt.error, attempt.discord_message_id].filter(Boolean).join(" · "); list.append(item); }
+          for (const attempt of delivery.attempts) { const item = document.createElement("li"); item.textContent = [attempt.attempted_at, statusLabel(attempt.status), attempt.error, attempt.discord_message_id].filter(Boolean).join(" · "); list.append(item); }
           content.append(list);
         }
         if (data.history_truncated) { const note = document.createElement("p"); note.textContent = strings().historyTruncated; content.append(note); }
@@ -571,7 +580,7 @@ function renderArrivals() {
   }
   for (const arrival of arrivals) {
     const source = [arrival.server_name, arrival.library_name].join(" · ");
-    const state = strings().eventStatus + ": " + arrival.status + " · " + strings().deliveryStates + ": " + arrival.delivery_statuses.join(", ");
+    const state = strings().eventStatus + ": " + statusLabel(arrival.status) + " · " + strings().deliveryStates + ": " + arrival.delivery_statuses.map(statusLabel).join(", ");
     if (tableBody) {
       const row = document.createElement("tr");
       for (const value of [arrival.title || "—", arrival.authors.join(", "), source, arrival.detected_at, state]) {
@@ -605,11 +614,12 @@ function renderDeliveries() {
   document.querySelector("#history-previous").disabled = deliveryOffset === 0;
   document.querySelector("#history-next").disabled = deliveries.length < 50;
   document.querySelector("#history-page").textContent = strings().page + " " + (Math.floor(deliveryOffset / 50) + 1);
+  if (!deliveries.length) { const empty = document.createElement("p"); empty.textContent = strings().noDeliveries; list.append(empty); return; }
   for (const delivery of deliveries) {
     const card = document.createElement("div"); card.className = "library-card";
     const heading = document.createElement("h3"); heading.textContent = delivery.book_title || "—"; card.append(heading);
     const source = document.createElement("p"); source.textContent = [delivery.server_name, delivery.library_name, delivery.webhook_name].join(" · "); card.append(source);
-    const state = document.createElement("p"); state.textContent = delivery.status + " · " + strings().attempts + ": " + delivery.attempt_count; card.append(state);
+    const state = document.createElement("p"); state.textContent = statusLabel(delivery.status) + " · " + strings().attempts + ": " + delivery.attempt_count; card.append(state);
     for (const [label, value] of [[strings().detectedAt, delivery.detected_at], [strings().sentAt, delivery.sent_at], [strings().nextRetry, ["RETRY", "QUEUED"].includes(delivery.status) ? delivery.next_retry_at : null], [strings().sendingStarted, delivery.status === "SENDING" ? delivery.sending_started_at : null], [strings().lastError, delivery.last_error], [strings().discordId, delivery.discord_message_id]]) {
       if (value) { const line = document.createElement("p"); line.textContent = label + ": " + value; card.append(line); }
     }
@@ -618,7 +628,7 @@ function renderDeliveries() {
     show.addEventListener("click", async () => {
       try {
         const entries = await call("/notifications/" + delivery.id + "/history"); details.replaceChildren();
-        for (const entry of entries) { const row = document.createElement("li"); row.textContent = [entry.attempted_at, entry.status, entry.error, entry.discord_message_id].filter(Boolean).join(" · "); details.append(row); }
+        for (const entry of entries) { const row = document.createElement("li"); row.textContent = [entry.attempted_at, statusLabel(entry.status), entry.error, entry.discord_message_id].filter(Boolean).join(" · "); details.append(row); }
         details.hidden = false;
       } catch { message.textContent = strings().failed; }
     });

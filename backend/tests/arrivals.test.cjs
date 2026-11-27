@@ -19,7 +19,7 @@ test("arrival views keep details and use authenticated lazy cover URLs", () => {
   const entries = {"#arrivals-list": node("div"), "#arrivals-view": {value: "list"}, "#arrivals-previous": {}, "#arrivals-next": {}, "#arrivals-page": {}};
   const arrival = {event_id: 123, title: "<script>not HTML</script>", authors: ["Author"], server_name: "Server", library_name: "Library", detected_at: "2026", status: "READY", delivery_statuses: ["SENT"]};
   const labels = {page: "Page", noArrivals: "None", eventStatus: "Event", deliveryStates: "Delivery", details: "Details", title: "Title", authors: "Authors", arrivalSource: "Source", arrivalDate: "Date", arrivalStatus: "Status", coverAlt: "Cover", coverUnavailable: "No cover"};
-  const context = {document: {querySelector: selector => entries[selector], createElement: node}, strings: () => labels, arrivals: [arrival], arrivalsOffset: 0, encodeURIComponent};
+  const context = {document: {querySelector: selector => entries[selector], createElement: node}, strings: () => labels, statusLabel: value => value, arrivals: [arrival], arrivalsOffset: 0, encodeURIComponent};
   vm.runInNewContext(source.slice(start, end), context);
   context.renderArrivals();
   assert.equal(descendants(entries["#arrivals-list"], "h3")[0].textContent, arrival.title);
@@ -56,7 +56,7 @@ test("arrival details show waiting and retry diagnostics as text", async () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/static/admin.js"), "utf8");
   const start = source.indexOf("function createArrivalDetails("), end = source.indexOf("function renderArrivals(", start);
   const labels = {details: "Details", loadCover: "Cover", metadataProcessing: "Metadata", eventStatus: "Status", metadataAttempts: "Checks", metadataNextCheck: "Check", metadataDeadline: "Deadline", metadataLastFailed: "Failed", processingTimesHint: "May be late", nextRetry: "Retry", sendingStarted: "Started"};
-  const context = {document: {createElement: node}, strings: () => labels, encodeURIComponent, call: async () => ({metadata: {}, metadata_processing: {status: "WAITING_FOR_METADATA", attempt_count: 2, not_before_at: "soon", deadline_at: "later", last_attempt_failed: true}, deliveries: [{webhook_name: "Target", status: "RETRY", next_retry_at: "tomorrow", attempts: []}], history_truncated: false})};
+  const context = {document: {createElement: node}, strings: () => labels, statusLabel: value => value, encodeURIComponent, call: async () => ({metadata: {}, metadata_processing: {status: "WAITING_FOR_METADATA", attempt_count: 2, not_before_at: "soon", deadline_at: "later", last_attempt_failed: true}, deliveries: [{webhook_name: "Target", status: "RETRY", next_retry_at: "tomorrow", attempts: []}], history_truncated: false})};
   vm.runInNewContext(source.slice(start, end), context);
   const details = context.createArrivalDetails({event_id: 1}); details.open = true;
   await details.handlers.toggle();
@@ -72,7 +72,7 @@ test("reopening arrival details reloads state and ignores older responses", asyn
   const source = fs.readFileSync(path.join(__dirname, "../app/static/admin.js"), "utf8");
   const start = source.indexOf("function createArrivalDetails("), end = source.indexOf("function renderArrivals(", start);
   const requests = [];
-  const context = {document: {createElement: node}, strings: () => ({details: "Details", loadCover: "Cover", metadataProcessing: "Metadata", eventStatus: "Status", metadataAttempts: "Checks"}), message: {}, encodeURIComponent, call: () => new Promise(resolve => requests.push(resolve))};
+  const context = {document: {createElement: node}, strings: () => ({details: "Details", loadCover: "Cover", metadataProcessing: "Metadata", eventStatus: "Status", metadataAttempts: "Checks"}), statusLabel: value => value, message: {}, encodeURIComponent, call: () => new Promise(resolve => requests.push(resolve))};
   vm.runInNewContext(source.slice(start, end), context);
   const details = context.createArrivalDetails({event_id: 1});
   details.open = true; const first = details.handlers.toggle();

@@ -93,7 +93,7 @@
             <label for="arrivals-from" data-text="filterFrom">Erkannt ab (UTC)</label><input id="arrivals-from" type="date">
             <label for="arrivals-to" data-text="filterTo">Erkannt bis (UTC)</label><input id="arrivals-to" type="date">
             <label for="arrivals-status" data-text="deliveryStates">Zustellstatus</label>
-            <select id="arrivals-status"><option value="" data-text="all">Alle</option><option value="WAITING_FOR_METADATA">WAITING_FOR_METADATA</option><option value="READY">READY</option><option value="QUEUED">QUEUED</option><option value="SENDING">SENDING</option><option value="SENT">SENT</option><option value="RETRY">RETRY</option><option value="FAILED">FAILED</option><option value="SKIPPED">SKIPPED</option></select>
+            <select id="arrivals-status"><option value="" data-text="all">Alle</option><option value="WAITING_FOR_METADATA" data-text="waiting_for_metadata">Warten auf Metadaten</option><option value="READY" data-text="ready">Bereit</option><option value="QUEUED" data-text="queued">Eingeplant</option><option value="SENDING" data-text="sending">Wird gesendet</option><option value="SENT" data-text="sent">Gesendet</option><option value="RETRY" data-text="retry">Erneuter Versuch</option><option value="FAILED" data-text="failedCount">Fehlgeschlagen</option><option value="SKIPPED" data-text="skipped">Übersprungen</option></select>
             <button type="submit" data-text="applyFilters">Filter anwenden</button>
           </form>
         </details>
@@ -171,7 +171,7 @@
         <label for="history-server" data-text="arrivalsServer">Server</label><select id="history-server"></select>
         <label for="history-library" data-text="arrivalsLibrary">Bibliothek</label><select id="history-library"></select>
         <label for="history-status" data-text="deliveryStates">Zustellstatus</label>
-        <select id="history-status"><option value="" data-text="all">Alle</option><option value="WAITING_FOR_METADATA">WAITING_FOR_METADATA</option><option value="READY">READY</option><option value="QUEUED">QUEUED</option><option value="SENDING">SENDING</option><option value="SENT">SENT</option><option value="RETRY">RETRY</option><option value="FAILED">FAILED</option><option value="SKIPPED">SKIPPED</option></select>
+        <select id="history-status"><option value="" data-text="all">Alle</option><option value="WAITING_FOR_METADATA" data-text="waiting_for_metadata">Warten auf Metadaten</option><option value="READY" data-text="ready">Bereit</option><option value="QUEUED" data-text="queued">Eingeplant</option><option value="SENDING" data-text="sending">Wird gesendet</option><option value="SENT" data-text="sent">Gesendet</option><option value="RETRY" data-text="retry">Erneuter Versuch</option><option value="FAILED" data-text="failedCount">Fehlgeschlagen</option><option value="SKIPPED" data-text="skipped">Übersprungen</option></select>
         <p><a id="history-export" href="/api/v1/admin/notifications/export.csv" data-text="exportHistory">Zustellhistorie als CSV herunterladen</a></p>
         <p data-text="exportHistoryHint">Der Export enthält höchstens die neuesten 10.000 Einträge der aktuellen Filter und keine Zugangsdaten oder Fehlertexte.</p>
         <div id="delivery-list"></div>
