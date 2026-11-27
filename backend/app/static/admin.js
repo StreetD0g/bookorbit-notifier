@@ -28,6 +28,8 @@ Object.assign(messages.de, {history: "Zustellhistorie", historyHelp: "Die neuest
 Object.assign(messages.en, {history: "Delivery history", historyHelp: "The latest 50 deliveries. Resending a delivered notification creates another Discord message.", attempts: "Attempts", detectedAt: "Detected", sentAt: "Sent", lastError: "Last error", discordId: "Discord message ID", retryAction: "Retry", resendConfirm: "This notification was already sent. Send another Discord message?", showHistory: "Show attempts"});
 Object.assign(messages.de, {historyHelp: "Zustellungen in Seiten zu je 50. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht."});
 Object.assign(messages.en, {historyHelp: "Deliveries in pages of 50. Resending a delivered notification creates another Discord message."});
+Object.assign(messages.de, {exportHistory: "Zustellhistorie als CSV herunterladen", exportHistoryHint: "Der Export enthält höchstens die neuesten 10.000 Einträge des gewählten Status und keine Zugangsdaten oder Fehlertexte."});
+Object.assign(messages.en, {exportHistory: "Download delivery history as CSV", exportHistoryHint: "The export contains at most the latest 10,000 entries for the selected status and excludes credentials and error text."});
 Object.assign(messages.de, {previewHint: "Die Vorschau zeigt Beispieldaten. Änderungen werden erst beim Speichern übernommen und nicht versendet.", templateSelect: "Vorlage", newTemplate: "Neue Vorlage", templateName: "Vorlagenname", saveTemplate: "Vorlage speichern", libraryTemplate: "Vorlage für diese Bibliothek", defaultTemplate: "Standardvorlage"});
 Object.assign(messages.en, {previewHint: "The preview shows sample data. Changes are only applied when saved and are not sent.", templateSelect: "Template", newTemplate: "New template", templateName: "Template name", saveTemplate: "Save template", libraryTemplate: "Template for this library", defaultTemplate: "Default template"});
 Object.assign(messages.de, {deliveryMode: "Versandmodus", modeSingle: "Einzeln", modeBatch: "Gebündelt", modeDaily: "Tägliche Zusammenfassung", batchSeconds: "Sammelzeit in Sekunden (30–86400)", dailyTime: "Uhrzeit der Zusammenfassung", timezone: "Zeitzone (IANA)", saveDelivery: "Versandmodus speichern", deliveryHint: "Bereits eingeplante Nachrichten behalten ihren Versandzeitpunkt."});
@@ -616,7 +618,11 @@ async function loadDeliveries() {
   if (request !== deliveryRequest) return;
   deliveries = data; renderDeliveries();
 }
-document.querySelector("#history-status").addEventListener("change", () => { deliveryOffset = 0; loadDeliveries().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#history-status").addEventListener("change", event => {
+  const status = event.currentTarget.value;
+  document.querySelector("#history-export").href = "/api/v1/admin/notifications/export.csv" + (status ? "?delivery_status=" + encodeURIComponent(status) : "");
+  deliveryOffset = 0; loadDeliveries().catch(() => { message.textContent = strings().failed; });
+});
 document.querySelector("#history-previous").addEventListener("click", () => { deliveryOffset = Math.max(0, deliveryOffset - 50); loadDeliveries().catch(() => { message.textContent = strings().failed; }); });
 document.querySelector("#history-next").addEventListener("click", () => { deliveryOffset += 50; loadDeliveries().catch(() => { message.textContent = strings().failed; }); });
 function mutationOptions(body) {

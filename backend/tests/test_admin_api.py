@@ -1,5 +1,7 @@
 """Exercise the administrator surface through HTTP, including failure paths."""
 
+import csv
+import io
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -254,6 +256,39 @@ def test_admin_changes_create_redacted_filtered_operational_events(client, monke
         assert http.put(metadata_path, headers=headers, json={"delay_seconds": 10, "max_wait_seconds": 60}).status_code == 200
     finally:
         log.close()
+
+
+def test_history_csv_is_authenticated_redacted_bounded_and_safe_for_spreadsheets(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, engine = client
+    assert http.get("/api/v1/admin/notifications/export.csv").status_code == 401
+    setup_and_login(http)
+    with Session(engine) as session:
+        server = Server(name="+server", base_url="https://private.example", api_key_encrypted="api-secret")
+        library = Library(server=server, name="Library", bookorbit_library_id=1)
+        book = Book(server=server, library=library, bookorbit_book_id=1, title=" =FORMULA()")
+        event = Event(book=book, server_id=1, library_id=1, event_type=EventType.BOOK_ADDED)
+        webhook = Webhook(name="@target", url_encrypted="webhook-secret")
+        session.add_all([server, library, book, webhook])
+        session.flush()
+        session.add_all(
+            [
+                NotificationQueueItem(event=event, webhook=webhook, status=QueueStatus.SENT, last_error="private-error"),
+                NotificationQueueItem(event=event, webhook=Webhook(name="Other", url_encrypted="secret"), status=QueueStatus.RETRY),
+            ]
+        )
+        session.commit()
+    response = http.get("/api/v1/admin/notifications/export.csv?delivery_status=SENT")
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    assert response.headers["x-export-truncated"] == "false" and "attachment" in response.headers["content-disposition"]
+    rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8-sig"))))
+    assert len(rows) == 1 and rows[0]["title"] == "' =FORMULA()"
+    assert rows[0]["server"] == "'+server" and rows[0]["destination"] == "'@target"
+    assert all(secret not in response.text for secret in ("api-secret", "webhook-secret", "private.example", "private-error"))
+    assert http.get("/api/v1/admin/notifications/export.csv?delivery_status=invalid").status_code == 422
+    monkeypatch.setattr("app.api.admin._HISTORY_EXPORT_LIMIT", 1)
+    truncated = http.get("/api/v1/admin/notifications/export.csv")
+    assert truncated.headers["x-export-truncated"] == "true"
+    assert len(list(csv.DictReader(io.StringIO(truncated.content.decode("utf-8-sig"))))) == 1
 
 
 def test_scan_history_is_authenticated_paginated_filtered_and_redacted(client) -> None:

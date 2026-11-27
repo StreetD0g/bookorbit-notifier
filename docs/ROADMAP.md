@@ -50,6 +50,7 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [x] Record server-level metadata release, deferral and fetch failures in the allowlisted operational log without source error text.
 - [x] Record successful server enable/disable and library configuration saves as redacted, best-effort operational events.
 - [x] Show the earliest scheduled retry and in-progress start time in delivery history.
+- [x] Add a bounded, authenticated CSV export of delivery records with status filtering and spreadsheet formula protection.
 - [x] Allow confirmed removal of disabled webhooks without delivery records, preserving all queued work and history.
 - [x] Prevent narrow-screen overflow in the populated template editor and revalidate cached administration assets after updates; checked the preset, arrivals, delivery history and server settings views in a narrow browser viewport.
 - [ ] Design server removal and webhook removal with existing delivery records without silently losing detection or delivery history.

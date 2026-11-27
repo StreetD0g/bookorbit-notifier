@@ -27,3 +27,20 @@ test("delivery history shows only relevant scheduling timestamps", () => {
   assert.ok(!lines(cards[2]).includes("Retry: next"));
   assert.ok(!lines(cards[2]).includes("Started: started"));
 });
+
+test("CSV export follows the selected delivery status", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/static/admin.js"), "utf8");
+  const start = source.indexOf('document.querySelector("#history-status").addEventListener("change"');
+  const end = source.indexOf('document.querySelector("#history-previous").addEventListener', start);
+  assert.ok(start >= 0 && end > start);
+  const status = {addEventListener(_type, callback) { this.change = callback; }}, link = {};
+  let refreshes = 0;
+  const context = {document: {querySelector: selector => selector === "#history-status" ? status : link}, deliveryOffset: 50, loadDeliveries: async () => { refreshes++; }, encodeURIComponent};
+  vm.runInNewContext(source.slice(start, end), context);
+  status.change({currentTarget: {value: "RETRY"}});
+  assert.equal(link.href, "/api/v1/admin/notifications/export.csv?delivery_status=RETRY");
+  status.change({currentTarget: {value: ""}});
+  assert.equal(link.href, "/api/v1/admin/notifications/export.csv");
+  assert.equal(context.deliveryOffset, 0);
+  assert.equal(refreshes, 2);
+});

@@ -1,5 +1,7 @@
 """Opt-in administrator authentication and notification status endpoints."""
 
+import csv
+import io
 import logging
 from datetime import UTC, date, datetime, time, timedelta
 from hmac import compare_digest
@@ -52,6 +54,7 @@ from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES, DEFAULT_SERIES_NUMBER
 router = APIRouter(prefix="/admin", tags=["administrator"])
 _SESSION_COOKIE = "bookorbit_session"
 _CSRF_COOKIE = "bookorbit_csrf"
+_HISTORY_EXPORT_LIMIT = 10_000
 
 
 def _record_admin_event(request: Request, code: str, *, server_id: int | None = None, library_id: int | None = None) -> None:
@@ -379,6 +382,71 @@ def list_notifications(
 
     return NotificationAdministrationService(request.app.state.session_factory).list_deliveries(
         limit=limit, offset=offset, status=delivery_status
+    )
+
+
+def _safe_csv_text(value: str | None) -> str:
+    """Prevent spreadsheet programs evaluating untrusted source names or titles as formulas."""
+
+    value = value or ""
+    if value.startswith(("\t", "\r", "\n", "\ufeff")) or value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
+@router.get("/notifications/export.csv")
+def export_notifications_csv(
+    request: Request,
+    _auth: Annotated[AuthenticationService, Depends(_authenticated)],
+    delivery_status: QueueStatus | None = None,
+) -> Response:
+    """Export a bounded, redacted snapshot without credential or error fields."""
+
+    with request.app.state.session_factory() as session:
+        query = (
+            select(
+                Book.title,
+                Server.name,
+                Library.name,
+                Webhook.name,
+                Event.detected_at,
+                NotificationQueueItem.sent_at,
+                NotificationQueueItem.status,
+                NotificationQueueItem.attempt_count,
+            )
+            .join(Event, NotificationQueueItem.event_id == Event.id)
+            .join(Book, Event.book_id == Book.id)
+            .join(Server, Event.server_id == Server.id)
+            .join(Library, Event.library_id == Library.id)
+            .join(Webhook, NotificationQueueItem.webhook_id == Webhook.id)
+        )
+        if delivery_status is not None:
+            query = query.where(NotificationQueueItem.status == delivery_status)
+        rows = session.execute(query.order_by(NotificationQueueItem.id.desc()).limit(_HISTORY_EXPORT_LIMIT + 1)).all()
+        output = io.StringIO(newline="")
+        writer = csv.writer(output)
+        writer.writerow(["title", "server", "library", "destination", "detected_at_utc", "sent_at_utc", "status", "attempts"])
+        for title, server, library, webhook, detected, sent, queue_status, attempts in rows[:_HISTORY_EXPORT_LIMIT]:
+            writer.writerow(
+                [
+                    _safe_csv_text(title),
+                    _safe_csv_text(server),
+                    _safe_csv_text(library),
+                    _safe_csv_text(webhook),
+                    detected.isoformat(),
+                    sent.isoformat() if sent else "",
+                    queue_status.value,
+                    attempts,
+                ]
+            )
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="bookorbit-deliveries.csv"',
+            "Cache-Control": "no-store",
+            "X-Export-Truncated": "true" if len(rows) > _HISTORY_EXPORT_LIMIT else "false",
+        },
     )
 
 

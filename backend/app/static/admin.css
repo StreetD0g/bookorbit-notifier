@@ -37,6 +37,8 @@ dd { margin: 0; font-weight: 700; }
 .discord-embed dt { font-weight: 700; }
 .discord-embed dd { margin: 0 0 .6rem; font-weight: 400; }
 .management { padding: 1rem 0; border-bottom: 1px solid var(--rule); }
+.management a { color: var(--focus); }
+.management a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .management li { margin: .5rem 0; }
 .management button { margin: .25rem; }
 .library-card { border: 1px solid var(--rule); border-radius: .35rem; padding: 1rem; margin: .75rem 0; }
