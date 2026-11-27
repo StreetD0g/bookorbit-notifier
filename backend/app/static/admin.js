@@ -82,6 +82,8 @@ Object.assign(messages.de, {serverScanOverview: "Letzter Bibliotheksscan je Serv
 Object.assign(messages.en, {serverScanOverview: "Latest library scan per server", serverScanHelp: "The latest recorded library scan is not a live connection check and does not evaluate every library on a server.", scanUnknown: "No library scan recorded yet", scanDisabled: "Disabled", scanSucceeded: "Succeeded", scanPartial: "Incomplete", scanFailed: "Failed"});
 Object.assign(messages.de, {nextScan: "Nächster geplanter Scan", runtimeOff: "Automatische Verarbeitung deaktiviert", runtimeOn: "Automatische Verarbeitung aktiviert", nextScanHint: "Scanzeiten sind geplante Zeitpunkte und können sich durch laufende Aufgaben verzögern."});
 Object.assign(messages.en, {nextScan: "Next scheduled scan", runtimeOff: "Automatic processing disabled", runtimeOn: "Automatic processing enabled", nextScanHint: "Scan times are scheduled estimates and may be delayed by ongoing work."});
+Object.assign(messages.de, {bundledLogo: "BookOrbit-Notifier-Logo", previewBundledLogo: "BookOrbit-Notifier-Logo"});
+Object.assign(messages.en, {bundledLogo: "BookOrbit Notifier logo", previewBundledLogo: "BookOrbit Notifier logo"});
 Object.assign(messages.de, {scanHistory: "Scan-Protokoll", scanHistoryHelp: "Ergebnisse einzelner Bibliotheksscans in UTC. Verbindungsdaten und Fehlermeldungen werden nicht angezeigt.", scanFrom: "Abgeschlossen ab (UTC)", scanTo: "Abgeschlossen bis (UTC)", scanPages: "Scan-Protokoll Seiten", scanStarted: "Begonnen", scanCompleted: "Abgeschlossen", scanSeen: "Medien erfasst", scanAdded: "Neu erfasst", noScans: "Keine Scans für diese Auswahl."});
 Object.assign(messages.en, {scanHistory: "Scan history", scanHistoryHelp: "Results of individual library scans in UTC. Connection details and error messages are not shown.", scanFrom: "Completed from (UTC)", scanTo: "Completed through (UTC)", scanPages: "Scan history pages", scanStarted: "Started", scanCompleted: "Completed", scanSeen: "Media seen", scanAdded: "Newly recorded", noScans: "No scans match these filters."});
 Object.assign(messages.de, {latestArrivals: "Zuletzt erkannte Medien", latestArrivalsHelp: "Nur erkannte Neuzugänge; die stille Ersterfassung ist nicht enthalten.", allArrivals: "Alle Neuzugänge anzeigen"});
@@ -216,8 +218,8 @@ function updatePreviewSender() {
       if (request !== senderPreviewRequest) return;
       const original = originalProfiles.get(payload.webhook_id);
       document.querySelector("#preview-sender").textContent = result.username ?? original?.username ?? strings().previewOriginal;
-      const imageUrl = result.avatar_url ?? original?.avatar_url ?? null;
-      document.querySelector("#preview-avatar-status").textContent = result.avatar_url ? strings().previewAvatarCustom : original ? (original.avatar_url ? strings().originalAvatarLoaded : strings().originalNoAvatar) : strings().previewAvatarOriginal;
+      const imageUrl = result.avatar_is_bundled ? "/admin-assets/notifier-logo.png" : result.avatar_url ?? original?.avatar_url ?? null;
+      document.querySelector("#preview-avatar-status").textContent = result.avatar_is_bundled ? strings().previewBundledLogo : result.avatar_url ? strings().previewAvatarCustom : original ? (original.avatar_url ? strings().originalAvatarLoaded : strings().originalNoAvatar) : strings().previewAvatarOriginal;
       const avatar = document.querySelector("#preview-avatar-image"), fallback = document.querySelector("#preview-avatar-fallback");
       avatar.hidden = !imageUrl; fallback.hidden = Boolean(imageUrl);
       if (imageUrl) avatar.src = imageUrl; else avatar.removeAttribute("src");

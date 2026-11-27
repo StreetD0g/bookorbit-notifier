@@ -102,6 +102,8 @@ def _load(session: Session, key: str, default: SenderProfile) -> SenderProfile:
 
 
 def _validate_profile(profile: SenderProfile) -> None:
+    if profile.username.choice == ProfileChoice.LOGO:
+        raise ValueError("Bundled logo is only valid for avatars")
     if profile.username.value is not None and (
         len(profile.username.value) > 80 or profile.username.value != profile.username.value.strip()
     ):

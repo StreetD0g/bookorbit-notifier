@@ -29,6 +29,7 @@ from app.database.session import create_database_engine
 from app.main import app
 from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.providers.notifications.discord.client import DiscordDeliveryError, DiscordWebhookOriginal
+from app.providers.notifications.discord.sender_profile import BUNDLED_LOGO_URL
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
 from app.schemas.bookorbit import BookOrbitIdentity, BookOrbitLibrary, CoverImage
 
@@ -296,7 +297,16 @@ def test_sender_profiles_require_session_origin_and_csrf(client) -> None:
     assert http.post("/api/v1/admin/sender-profile-preview", headers=headers, json=preview).json() == {
         "username": "Preview only",
         "avatar_url": None,
+        "avatar_is_bundled": False,
     }
+    preview["avatar_url"] = {"choice": "logo"}
+    result = http.post("/api/v1/admin/sender-profile-preview", headers=headers, json=preview).json()
+    assert result == {"username": "Preview only", "avatar_url": BUNDLED_LOGO_URL, "avatar_is_bundled": True}
+    logo = http.get("/admin-assets/notifier-logo.png")
+    assert logo.status_code == 200 and logo.content.startswith(b"\x89PNG\r\n\x1a\n")
+    payload = {"username": {"choice": "logo"}, "avatar_url": {"choice": "inherit"}}
+    assert http.put(path, headers=headers, json=payload).status_code == 400
+    assert http.get(path).json()["username"]["value"] == "My library"
     assert http.get(path).json()["username"]["value"] == "My library"
     assert http.get("/api/v1/admin/sender-profiles/library?scope_id=999").status_code == 400
 

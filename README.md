@@ -18,7 +18,7 @@ Development has reached Phase 4 (Web UI). The backend persists encrypted source 
 ## Principles
 
 - Read-only BookOrbit API keys with the smallest possible library scope.
-- No direct BookOrbit database access, telemetry, or cloud requirement.
+- No direct BookOrbit database access or telemetry. The optional bundled Discord sender logo uses a public hosted image URL.
 - Stable source IDs rather than title/ISBN matching.
 - Durable detection and delivery separation to survive Discord outages.
 

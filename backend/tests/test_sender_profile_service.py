@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database.base import Base
 from app.database.models import DeliveryMode, Library, Server, Webhook
-from app.providers.notifications.discord.sender_profile import ProfileChoice, ProfileField, SenderProfile
+from app.providers.notifications.discord.sender_profile import BUNDLED_LOGO_URL, ProfileChoice, ProfileField, SenderProfile
 from app.queue.state import DeliveryClaim
 from app.queue.worker import DiscordDeliveryWorker, WebhookTarget
 from app.services.sender_profiles import SenderProfileService
@@ -41,6 +41,12 @@ def test_profiles_persist_and_resolve_for_same_webhook(tmp_path: Path) -> None:
     preview = SenderProfile(username=ProfileField(ProfileChoice.ORIGINAL))
     assert service.preview("library", first, preview, library_id=first, webhook_id=webhook_id) == (None, "https://example.com/avatar.png")
     assert service.resolve(first, webhook_id)[0] == "Books"  # Preview must never persist its override.
+    service.configure(
+        "library", first, SenderProfile(username=ProfileField(ProfileChoice.CUSTOM, "Books"), avatar_url=ProfileField(ProfileChoice.LOGO))
+    )
+    assert service.get("library", first).avatar_url.choice == ProfileChoice.LOGO
+    assert service.resolve(first, webhook_id) == ("Books", BUNDLED_LOGO_URL)
+    assert service.resolve(second, webhook_id) == (None, "https://example.com/avatar.png")
     unsaved_global = SenderProfile(username=ProfileField(ProfileChoice.CUSTOM, "Global draft"))
     assert service.preview("global", None, unsaved_global, library_id=second, webhook_id=webhook_id) == (
         None,

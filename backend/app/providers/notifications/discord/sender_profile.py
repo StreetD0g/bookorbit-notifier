@@ -10,6 +10,15 @@ class ProfileChoice(StrEnum):
     INHERIT = "inherit"
     ORIGINAL = "original"
     CUSTOM = "custom"
+    LOGO = "logo"
+
+
+# The pinned public PNG is immutable and can be fetched by Discord without
+# exposing or requiring a publicly reachable BookOrbit installation.
+BUNDLED_LOGO_URL = (
+    "https://raw.githubusercontent.com/StreetD0g/bookorbit-notifier/"
+    "19c9808e021434272744953256bc5362febba198/backend/app/static/notifier-logo.png"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,14 +53,18 @@ def resolve_profile(
 ) -> tuple[str | None, str | None]:
     """Resolve each field from most specific to global; None means Discord's original."""
 
-    def resolve(fields: tuple[ProfileField, ...]) -> str | None:
+    def resolve(fields: tuple[ProfileField, ...], *, avatar: bool = False) -> str | None:
         for field in fields:
             if field.choice == ProfileChoice.ORIGINAL:
                 return None
             if field.choice == ProfileChoice.CUSTOM:
                 return field.value
+            if field.choice == ProfileChoice.LOGO:
+                if not avatar:
+                    raise ValueError("Bundled logo is only valid for avatars")
+                return BUNDLED_LOGO_URL
         return None
 
     return resolve((library.username, webhook.username, global_profile.username)), resolve(
-        (library.avatar_url, webhook.avatar_url, global_profile.avatar_url)
+        (library.avatar_url, webhook.avatar_url, global_profile.avatar_url), avatar=True
     )

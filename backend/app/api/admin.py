@@ -31,7 +31,7 @@ from app.database.models import (
 from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.providers.events.bookorbit.factory import EncryptedBookOrbitClientFactory
 from app.providers.notifications.discord.client import DiscordDeliveryError, DiscordWebhookClient
-from app.providers.notifications.discord.sender_profile import ProfileChoice, ProfileField, SenderProfile
+from app.providers.notifications.discord.sender_profile import BUNDLED_LOGO_URL, ProfileChoice, ProfileField, SenderProfile
 from app.queue.worker import (
     DiscordNotificationSender,
     EncryptedWebhookTargetResolver,
@@ -653,7 +653,7 @@ def get_sender_profile(
 @router.post("/sender-profile-preview")
 def sender_profile_preview(
     request: Request, payload: SenderPreviewInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
-) -> dict[str, str | None]:
+) -> dict[str, str | bool | None]:
     """Preview unsaved sender values with parent precedence, without contacting Discord."""
 
     try:
@@ -666,7 +666,7 @@ def sender_profile_preview(
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    return {"username": username, "avatar_url": avatar_url}
+    return {"username": username, "avatar_url": avatar_url, "avatar_is_bundled": avatar_url == BUNDLED_LOGO_URL}
 
 
 @router.get("/profile-scopes")
