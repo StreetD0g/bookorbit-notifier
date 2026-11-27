@@ -67,6 +67,37 @@ def setup_and_login(client: TestClient) -> str:
     return client.cookies.get("bookorbit_csrf")
 
 
+def test_library_metadata_timing_is_authenticated_validated_and_persisted(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, engine = client
+    monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    with Session(engine) as session:
+        server = Server(name="Source", base_url="https://books.example", api_key_encrypted="private")
+        library = Library(server=server, name="Library", bookorbit_library_id=1)
+        session.add(library)
+        session.commit()
+        library_id = library.id
+    url = f"/api/v1/admin/libraries/{library_id}/metadata"
+    valid = {"delay_seconds": 15, "max_wait_seconds": 60}
+    assert http.put(url, headers={"origin": ORIGIN}, json=valid).status_code == 401
+    csrf = setup_and_login(http)
+    assert http.put(url, headers={"origin": ORIGIN}, json=valid).status_code == 401
+    headers = {"origin": ORIGIN, "x-csrf-token": csrf}
+    assert http.put(url, headers=headers, json=valid).status_code == 200
+    for invalid in [
+        {"delay_seconds": 61, "max_wait_seconds": 60},
+        {"delay_seconds": -1, "max_wait_seconds": 60},
+        {"delay_seconds": 0, "max_wait_seconds": 604801},
+        {"delay_seconds": True, "max_wait_seconds": 60},
+    ]:
+        assert http.put(url, headers=headers, json=invalid).status_code in (400, 422)
+    assert http.put("/api/v1/admin/libraries/99999/metadata", headers=headers, json=valid).status_code == 400
+    result = http.get("/api/v1/admin/libraries").json()
+    assert result[0]["metadata_delay_seconds"] == 15
+    assert result[0]["metadata_max_wait_seconds"] == 60
+    assert "private" not in str(result)
+
+
 def test_setup_login_cookie_csrf_and_logout(client) -> None:
     http, _engine = client
     assert http.get("/api/v1/admin/notifications/summary").status_code == 401

@@ -324,6 +324,20 @@ class ConfigurationService:
                 library.daily_summary_time = normalized_time
                 library.timezone = normalized_timezone
 
+    def configure_library_metadata(self, library_id: int, *, delay_seconds: int, max_wait_seconds: int) -> None:
+        """Set timing for future detections without rewriting existing event deadlines."""
+
+        if any(type(value) is not int or not 0 <= value <= 604_800 for value in (delay_seconds, max_wait_seconds)):
+            raise ValueError("Metadata timing must be between 0 and 604800 seconds")
+        if max_wait_seconds < delay_seconds:
+            raise ValueError("Maximum metadata wait must not be shorter than the initial delay")
+        with self._session_factory() as session, session.begin():
+            library = session.get(Library, library_id)
+            if library is None:
+                raise ValueError("Library does not exist")
+            library.metadata_delay_seconds = delay_seconds
+            library.metadata_max_wait_seconds = max_wait_seconds
+
     def list_servers(self) -> list[ServerView]:
         """List non-secret source configuration for future administrator views."""
 

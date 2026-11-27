@@ -32,6 +32,8 @@ Object.assign(messages.de, {previewHint: "Die Vorschau zeigt Beispieldaten. Änd
 Object.assign(messages.en, {previewHint: "The preview shows sample data. Changes are only applied when saved and are not sent.", templateSelect: "Template", newTemplate: "New template", templateName: "Template name", saveTemplate: "Save template", libraryTemplate: "Template for this library", defaultTemplate: "Default template"});
 Object.assign(messages.de, {deliveryMode: "Versandmodus", modeSingle: "Einzeln", modeBatch: "Gebündelt", modeDaily: "Tägliche Zusammenfassung", batchSeconds: "Sammelzeit in Sekunden (30–86400)", dailyTime: "Uhrzeit der Zusammenfassung", timezone: "Zeitzone (IANA)", saveDelivery: "Versandmodus speichern", deliveryHint: "Bereits eingeplante Nachrichten behalten ihren Versandzeitpunkt."});
 Object.assign(messages.en, {deliveryMode: "Delivery mode", modeSingle: "Individual", modeBatch: "Batch", modeDaily: "Daily summary", batchSeconds: "Batch window in seconds (30–86400)", dailyTime: "Summary time", timezone: "Time zone (IANA)", saveDelivery: "Save delivery mode", deliveryHint: "Already scheduled notifications retain their due time."});
+Object.assign(messages.de, {metadataTiming: "Metadaten-Wartezeit", metadataDelay: "Erste Prüfung nach (Sekunden)", metadataMaxWait: "Maximale Wartezeit (Sekunden)", metadataSave: "Wartezeit speichern", metadataTimingInvalid: "Die maximale Wartezeit darf nicht kürzer als die erste Verzögerung sein.", metadataTimingHelp: "Gilt für neu erkannte Medien. Bereits wartende Medien behalten ihre Zeitpunkte. Nur ein fehlender Titel verzögert die Freigabe; die Prüfung erfolgt beim nächsten Scan und kann sich dadurch verspäten."});
+Object.assign(messages.en, {metadataTiming: "Metadata waiting time", metadataDelay: "First check after (seconds)", metadataMaxWait: "Maximum wait (seconds)", metadataSave: "Save waiting time", metadataTimingInvalid: "The maximum wait cannot be shorter than the initial delay.", metadataTimingHelp: "Applies to newly detected media. Waiting media keep their existing times. Only a missing title delays release; checks run on the next scan and may therefore be late."});
 Object.assign(messages.de, {testMessage: "Testnachricht senden", testProfile: "Profil für Testnachricht", defaultProfile: "Webhook- und globale Einstellungen", testSent: "Testnachricht gesendet."});
 Object.assign(messages.en, {testMessage: "Send test message", testProfile: "Profile for test message", defaultProfile: "Webhook and global settings", testSent: "Test message sent."});
 Object.assign(messages.de, {refreshFailed: "Die Aktion war erfolgreich, aber die Ansicht konnte nicht aktualisiert werden."});
@@ -732,6 +734,27 @@ function renderManagement() {
       } catch { message.textContent = strings().failed; }
     });
     card.append(delivery);
+    const timing = document.createElement("form"), timingHeading = document.createElement("h4");
+    timingHeading.textContent = strings().metadataTiming; timing.append(timingHeading);
+    function timingField(labelText, value) {
+      const label = document.createElement("label"), input = document.createElement("input");
+      label.textContent = labelText; input.type = "number"; input.min = "0"; input.max = "604800"; input.step = "1"; input.required = true; input.value = value;
+      label.append(input); timing.append(label); return input;
+    }
+    const delay = timingField(strings().metadataDelay, library.metadata_delay_seconds);
+    const maxWait = timingField(strings().metadataMaxWait, library.metadata_max_wait_seconds);
+    const timingHint = document.createElement("p"); timingHint.textContent = strings().metadataTimingHelp; timing.append(timingHint);
+    const saveTiming = document.createElement("button"); saveTiming.type = "submit"; saveTiming.textContent = strings().metadataSave; timing.append(saveTiming);
+    timing.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (Number(maxWait.value) < Number(delay.value)) { message.textContent = strings().metadataTimingInvalid; return; }
+      saveTiming.disabled = true;
+      try {
+        await call("/libraries/" + library.id + "/metadata", mutationOptions({delay_seconds: Number(delay.value), max_wait_seconds: Number(maxWait.value)}));
+        try { await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().refreshFailed; }
+      } catch { message.textContent = strings().failed; } finally { saveTiming.disabled = false; }
+    });
+    card.append(timing);
     libraryList.append(card);
   }
 }

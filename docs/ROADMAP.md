@@ -45,6 +45,8 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 
 ## Phase 4 – web UI and local administration
 
+- [x] Configure metadata delay and maximum wait independently per library, preserving existing event deadlines.
+
 - [ ] Verify the cover-delivery fix end-to-end using an authenticated BookOrbit cover and an explicitly authorized test webhook. Automated simulated source/Discord integration tests pass.
 - [x] Fix duration template variables: keep `duration_seconds` as seconds; format `duration` as `HH:MM h`, or `MM min` when hours are zero. Verify the displayed values in the preview and delivered message.
 - [x] Show a bundled sample cover in the template preview and its explicitly sent test message when covers are enabled; mark unavailable link variables in the editor.

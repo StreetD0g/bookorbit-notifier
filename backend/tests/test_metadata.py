@@ -2,14 +2,17 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from app.core.crypto import SecretCipher
 from app.database.base import Base
 from app.database.models import Book, Event, EventStatus, Library, NotificationQueueItem, QueueStatus, Server, Webhook
 from app.providers.events.bookorbit.client import BookOrbitApiError
 from app.scanner.reconcile import ObservedBook, reconcile_library_inventory
 from app.schemas.bookorbit import BookOrbitBookDetail
+from app.services.configuration import ConfigurationService
 from app.services.metadata import MetadataRefreshService
 
 
@@ -156,3 +159,42 @@ async def test_metadata_source_failure_releases_available_data_at_deadline(
     assert report.released == 1
     session.refresh(event)
     assert event.status == EventStatus.READY
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [False, True])
+async def test_metadata_retry_does_not_overshoot_deadline(metadata_setup, failure: bool) -> None:
+    session, server, _library, event = metadata_setup
+    now = datetime(2026, 11, 26, tzinfo=UTC)
+    event.metadata_not_before_at = now - timedelta(seconds=1)
+    event.metadata_deadline_at = now + timedelta(seconds=5)
+    session.commit()
+    client = DetailClient(error=BookOrbitApiError("book detail", 503)) if failure else DetailClient(_detail(None))
+    await MetadataRefreshService(lambda: Session(session.bind), retry_seconds=30).process_due_events(server.id, client, now=now)
+    session.refresh(event)
+    assert event.metadata_not_before_at == (now + timedelta(seconds=5)).replace(tzinfo=None)
+
+
+def test_timing_changes_apply_only_to_new_events(metadata_setup) -> None:
+    session, server, library, existing_event = metadata_setup
+    previous = (existing_event.metadata_not_before_at, existing_event.metadata_deadline_at)
+    service = ConfigurationService(lambda: Session(session.bind), SecretCipher(Fernet.generate_key().decode()))
+    service.configure_library_metadata(library.id, delay_seconds=15, max_wait_seconds=60)
+    session.expire_all()
+    assert (existing_event.metadata_not_before_at, existing_event.metadata_deadline_at) == previous
+    reconcile_library_inventory(
+        session,
+        server_id=server.id,
+        library_id=library.id,
+        observed_books=[
+            ObservedBook(bookorbit_book_id=1, title="Existing"),
+            ObservedBook(bookorbit_book_id=2, title="New"),
+            ObservedBook(bookorbit_book_id=3, title="Later"),
+        ],
+        scan_complete=True,
+    )
+    session.commit()
+    newest = session.scalars(select(Event).order_by(Event.id.desc())).first()
+    assert newest is not None and newest.id != existing_event.id
+    assert abs((newest.metadata_not_before_at - newest.detected_at).total_seconds() - 15) < 2
+    assert abs((newest.metadata_deadline_at - newest.detected_at).total_seconds() - 60) < 2

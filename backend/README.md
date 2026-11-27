@@ -26,6 +26,8 @@ Remote access requires an HTTPS origin; plain HTTP is accepted only for localhos
 
 The administrator menu separates the overview, libraries, webhook presets, arrivals, delivery history and settings into views. The selected view is reflected in the URL fragment, and switching views keeps unsaved form inputs in the current page. Reloading or using the separate refresh action can still discard unsaved edits.
 
+Each library can configure the initial metadata delay and maximum wait from zero to 604,800 seconds (seven days); the maximum must be at least the initial delay. Settings apply to newly detected media, while events already waiting retain their deadlines. A title is required for early release, whereas optional metadata never delays it. Retries are scheduled no later than the deadline, but checks run during source scans and can occur later because of scan intervals or outages.
+
 The overview lists each server's most recently recorded library-scan result and, while the runtime is active, its next scheduled scan when available. A library scan is a historical observation, not a live connectivity test or an aggregate assessment of every library; scheduled times can be delayed by ongoing work and are reset when the process restarts.
 
 The overview also shows up to five recently detected arrivals with covers loaded lazily through the authenticated administrator cover endpoint. The silent initial baseline is excluded, and a missing cover does not prevent the item from being shown.

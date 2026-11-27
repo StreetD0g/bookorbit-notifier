@@ -109,7 +109,7 @@ class MetadataRefreshService:
                 if _is_publishable(detail) or _deadline_reached(event.metadata_deadline_at, now):
                     mark_event_ready(session, event.id)
                     return "released"
-                event.metadata_not_before_at = now + timedelta(seconds=self._retry_seconds)
+                event.metadata_not_before_at = _next_refresh(event.metadata_deadline_at, now, self._retry_seconds)
         return "deferred"
 
     def _record_fetch_failure(self, event_id: int, error: str, now: datetime) -> str:
@@ -125,7 +125,7 @@ class MetadataRefreshService:
                 if _deadline_reached(event.metadata_deadline_at, now):
                     mark_event_ready(session, event.id)
                     return "released"
-                event.metadata_not_before_at = now + timedelta(seconds=self._retry_seconds)
+                event.metadata_not_before_at = _next_refresh(event.metadata_deadline_at, now, self._retry_seconds)
         return "deferred"
 
 
@@ -142,6 +142,16 @@ def _deadline_reached(deadline: datetime | None, now: datetime) -> bool:
         return True
     normalized = deadline.replace(tzinfo=UTC) if deadline.tzinfo is None else deadline.astimezone(UTC)
     return normalized <= now
+
+
+def _next_refresh(deadline: datetime | None, now: datetime, retry_seconds: int) -> datetime:
+    """Do not schedule a retry after the configured deadline; the next scan may still be later."""
+
+    next_retry = now + timedelta(seconds=retry_seconds)
+    if deadline is None:
+        return next_retry
+    normalized = deadline.replace(tzinfo=UTC) if deadline.tzinfo is None else deadline.astimezone(UTC)
+    return min(next_retry, normalized)
 
 
 def _safe_error(value: str) -> str:

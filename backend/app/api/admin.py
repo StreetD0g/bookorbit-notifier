@@ -160,6 +160,11 @@ class LibraryDeliveryInput(BaseModel):
     timezone: str = Field(max_length=64)
 
 
+class LibraryMetadataInput(BaseModel):
+    delay_seconds: int = Field(ge=0, le=604800, strict=True)
+    max_wait_seconds: int = Field(ge=0, le=604800, strict=True)
+
+
 class TemplateInput(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     title_template: str = Field(max_length=512)
@@ -1004,6 +1009,8 @@ def list_libraries(request: Request, _auth: Annotated[AuthenticationService, Dep
                 "batch_window_seconds": row.batch_window_seconds,
                 "daily_summary_time": row.daily_summary_time,
                 "timezone": row.timezone,
+                "metadata_delay_seconds": row.metadata_delay_seconds,
+                "metadata_max_wait_seconds": row.metadata_max_wait_seconds,
                 "book_count": book_counts.get(row.id, 0),
                 "arrival_count": event_counts.get(row.id, 0),
                 "last_scan": latest_scans.get(row.id),
@@ -1040,6 +1047,21 @@ def configure_library_delivery(
             batch_window_seconds=payload.batch_window_seconds,
             daily_summary_time=payload.daily_summary_time,
             timezone=payload.timezone,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {"status": "saved"}
+
+
+@router.put("/libraries/{library_id}/metadata")
+def configure_library_metadata(
+    request: Request, library_id: int, payload: LibraryMetadataInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str]:
+    """Change wait settings for future events while preserving existing deadlines."""
+
+    try:
+        _configuration(request).configure_library_metadata(
+            library_id, delay_seconds=payload.delay_seconds, max_wait_seconds=payload.max_wait_seconds
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
