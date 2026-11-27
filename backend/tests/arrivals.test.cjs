@@ -51,3 +51,19 @@ test("dashboard recent arrivals use only local authenticated cover paths", () =>
   context.latestArrivals = []; context.renderLatestArrivals();
   assert.equal(descendants(container, "p")[0].textContent, "None");
 });
+
+test("arrival details show waiting and retry diagnostics as text", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/static/admin.js"), "utf8");
+  const start = source.indexOf("function createArrivalDetails("), end = source.indexOf("function renderArrivals(", start);
+  const labels = {details: "Details", loadCover: "Cover", metadataProcessing: "Metadata", eventStatus: "Status", metadataAttempts: "Checks", metadataNextCheck: "Check", metadataDeadline: "Deadline", metadataLastFailed: "Failed", processingTimesHint: "May be late", nextRetry: "Retry", sendingStarted: "Started"};
+  const context = {document: {createElement: node}, strings: () => labels, encodeURIComponent, call: async () => ({metadata: {}, metadata_processing: {status: "WAITING_FOR_METADATA", attempt_count: 2, not_before_at: "soon", deadline_at: "later", last_attempt_failed: true}, deliveries: [{webhook_name: "Target", status: "RETRY", next_retry_at: "tomorrow", attempts: []}], history_truncated: false})};
+  vm.runInNewContext(source.slice(start, end), context);
+  const details = context.createArrivalDetails({event_id: 1}); details.open = true;
+  await details.handlers.toggle();
+  const lines = descendants(details, "li").map(item => item.textContent);
+  assert.ok(lines.includes("Checks: 2"));
+  assert.ok(lines.includes("Check: soon"));
+  assert.ok(lines.includes("Deadline: later"));
+  assert.ok(lines.includes("Failed: ✓"));
+  assert.ok(lines.includes("Retry: tomorrow"));
+});

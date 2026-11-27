@@ -249,10 +249,14 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
             scan_complete=True,
         )
         session.commit()
-        assert session.scalar(select(Event)) is not None
+        event = session.scalar(select(Event))
+        assert event is not None
+        event.metadata_attempt_count = 2
+        event.metadata_last_error = "private source error and credential"
         item = session.scalar(select(NotificationQueueItem))
         assert item is not None
         item.status = QueueStatus.SENT
+        item.next_retry_at = datetime(2026, 11, 27, 12, tzinfo=UTC)
         session.commit()
         item_id = item.id
         server_id = server.id
@@ -264,6 +268,11 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
     detail = http.get(f"/api/v1/admin/arrivals/{arrivals[0]['event_id']}")
     assert detail.status_code == 200 and detail.json()["metadata"]["formats"] == ["epub"]
     assert detail.json()["deliveries"][0]["status"] == "SENT"
+    assert detail.json()["deliveries"][0]["next_retry_at"].startswith("2026-11-27T12:00:00")
+    processing = detail.json()["metadata_processing"]
+    assert processing["attempt_count"] == 2 and processing["last_attempt_failed"] is True
+    assert processing["not_before_at"] is not None and processing["deadline_at"] is not None
+    assert "private source error and credential" not in detail.text
     assert "/private/" not in detail.text and "encrypted" not in detail.text
     assert http.get("/api/v1/admin/arrivals/999").status_code == 404
     assert "encrypted" not in str(arrivals)

@@ -34,6 +34,8 @@ Object.assign(messages.de, {deliveryMode: "Versandmodus", modeSingle: "Einzeln",
 Object.assign(messages.en, {deliveryMode: "Delivery mode", modeSingle: "Individual", modeBatch: "Batch", modeDaily: "Daily summary", batchSeconds: "Batch window in seconds (30–86400)", dailyTime: "Summary time", timezone: "Time zone (IANA)", saveDelivery: "Save delivery mode", deliveryHint: "Already scheduled notifications retain their due time."});
 Object.assign(messages.de, {metadataTiming: "Metadaten-Wartezeit", metadataDelay: "Erste Prüfung nach (Sekunden)", metadataMaxWait: "Maximale Wartezeit (Sekunden)", metadataSave: "Wartezeit speichern", metadataTimingInvalid: "Die maximale Wartezeit darf nicht kürzer als die erste Verzögerung sein.", metadataTimingHelp: "Gilt für neu erkannte Medien. Bereits wartende Medien behalten ihre Zeitpunkte. Nur ein fehlender Titel verzögert die Freigabe; die Prüfung erfolgt beim nächsten Scan und kann sich dadurch verspäten."});
 Object.assign(messages.en, {metadataTiming: "Metadata waiting time", metadataDelay: "First check after (seconds)", metadataMaxWait: "Maximum wait (seconds)", metadataSave: "Save waiting time", metadataTimingInvalid: "The maximum wait cannot be shorter than the initial delay.", metadataTimingHelp: "Applies to newly detected media. Waiting media keep their existing times. Only a missing title delays release; checks run on the next scan and may therefore be late."});
+Object.assign(messages.de, {metadataProcessing: "Metadatenverarbeitung", metadataAttempts: "Prüfversuche", metadataNextCheck: "Nächste Prüfung frühestens (UTC)", metadataDeadline: "Wartefrist (UTC)", metadataLastFailed: "Letzte Metadatenprüfung fehlgeschlagen", nextRetry: "Nächster Zustellversuch frühestens (UTC)", sendingStarted: "Versand begonnen (UTC)", processingTimesHint: "Die tatsächliche Verarbeitung kann später erfolgen."});
+Object.assign(messages.en, {metadataProcessing: "Metadata processing", metadataAttempts: "Checks", metadataNextCheck: "Next check no earlier than (UTC)", metadataDeadline: "Wait deadline (UTC)", metadataLastFailed: "Last metadata check failed", nextRetry: "Next delivery attempt no earlier than (UTC)", sendingStarted: "Delivery started (UTC)", processingTimesHint: "Actual processing may occur later."});
 Object.assign(messages.de, {testMessage: "Testnachricht senden", testProfile: "Profil für Testnachricht", defaultProfile: "Webhook- und globale Einstellungen", testSent: "Testnachricht gesendet."});
 Object.assign(messages.en, {testMessage: "Send test message", testProfile: "Profile for test message", defaultProfile: "Webhook and global settings", testSent: "Test message sent."});
 Object.assign(messages.de, {refreshFailed: "Die Aktion war erfolgreich, aber die Ansicht konnte nicht aktualisiert werden."});
@@ -490,9 +492,23 @@ function createArrivalDetails(arrival) {
           description.textContent = Array.isArray(value) ? value.join(", ") : String(value); metadata.append(term, description);
         }
         content.append(metadata);
+        const processing = data.metadata_processing;
+        if (processing) {
+          const title = document.createElement("strong"); title.textContent = strings().metadataProcessing; content.append(title);
+          const list = document.createElement("ul");
+          const rows = [[strings().eventStatus, processing.status], [strings().metadataAttempts, processing.attempt_count]];
+          if (processing.status === "WAITING_FOR_METADATA") rows.push([strings().metadataNextCheck, processing.not_before_at], [strings().metadataDeadline, processing.deadline_at]);
+          if (processing.last_attempt_failed) rows.push([strings().metadataLastFailed, "✓"]);
+          for (const [label, value] of rows) { if (value === null || value === undefined) continue; const item = document.createElement("li"); item.textContent = label + ": " + value; list.append(item); }
+          content.append(list);
+          if (processing.status === "WAITING_FOR_METADATA") { const hint = document.createElement("p"); hint.textContent = strings().processingTimesHint; content.append(hint); }
+        }
         for (const delivery of data.deliveries) {
           const title = document.createElement("strong"); title.textContent = delivery.webhook_name + " · " + delivery.status; content.append(title);
           const list = document.createElement("ul");
+          for (const [label, value] of [[strings().nextRetry, ["RETRY", "QUEUED"].includes(delivery.status) ? delivery.next_retry_at : null], [strings().sendingStarted, delivery.status === "SENDING" ? delivery.sending_started_at : null]]) {
+            if (!value) continue; const item = document.createElement("li"); item.textContent = label + ": " + value; list.append(item);
+          }
           for (const attempt of delivery.attempts) { const item = document.createElement("li"); item.textContent = [attempt.attempted_at, attempt.status, attempt.error, attempt.discord_message_id].filter(Boolean).join(" · "); list.append(item); }
           content.append(list);
         }

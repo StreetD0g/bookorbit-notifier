@@ -586,8 +586,23 @@ def arrival_detail(request: Request, event_id: int, _auth: Annotated[Authenticat
         return {
             "event_id": event.id,
             "metadata": {name: metadata.get(name) for name in allowed},
+            # Stored source errors can contain sensitive context; expose only their presence.
+            "metadata_processing": {
+                "status": event.status,
+                "attempt_count": event.metadata_attempt_count,
+                "not_before_at": event.metadata_not_before_at,
+                "deadline_at": event.metadata_deadline_at,
+                "last_attempt_failed": event.metadata_last_error is not None,
+            },
             "deliveries": [
-                {"webhook_name": name, "status": item.status, "attempts": by_delivery.get(item.id, [])} for item, name in deliveries
+                {
+                    "webhook_name": name,
+                    "status": item.status,
+                    "next_retry_at": item.next_retry_at,
+                    "sending_started_at": item.sending_started_at,
+                    "attempts": by_delivery.get(item.id, []),
+                }
+                for item, name in deliveries
             ],
             "history_truncated": len(attempts) > 200,
         }
