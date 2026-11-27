@@ -377,11 +377,13 @@ def list_notifications(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     delivery_status: QueueStatus | None = None,
+    server_id: int | None = Query(default=None, gt=0),
+    library_id: int | None = Query(default=None, gt=0),
 ):
     """List redacted delivery rows in bounded pages."""
 
     return NotificationAdministrationService(request.app.state.session_factory).list_deliveries(
-        limit=limit, offset=offset, status=delivery_status
+        limit=limit, offset=offset, status=delivery_status, server_id=server_id, library_id=library_id
     )
 
 
@@ -399,6 +401,8 @@ def export_notifications_csv(
     request: Request,
     _auth: Annotated[AuthenticationService, Depends(_authenticated)],
     delivery_status: QueueStatus | None = None,
+    server_id: int | None = Query(default=None, gt=0),
+    library_id: int | None = Query(default=None, gt=0),
 ) -> Response:
     """Export a bounded, redacted snapshot without credential or error fields."""
 
@@ -422,6 +426,10 @@ def export_notifications_csv(
         )
         if delivery_status is not None:
             query = query.where(NotificationQueueItem.status == delivery_status)
+        if server_id is not None:
+            query = query.where(Event.server_id == server_id)
+        if library_id is not None:
+            query = query.where(Event.library_id == library_id)
         rows = session.execute(query.order_by(NotificationQueueItem.id.desc()).limit(_HISTORY_EXPORT_LIMIT + 1)).all()
         output = io.StringIO(newline="")
         writer = csv.writer(output)

@@ -51,6 +51,7 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [x] Record successful server enable/disable and library configuration saves as redacted, best-effort operational events.
 - [x] Show the earliest scheduled retry and in-progress start time in delivery history.
 - [x] Add a bounded, authenticated CSV export of delivery records with status filtering and spreadsheet formula protection.
+- [x] Filter delivery history and its CSV export consistently by server, library and delivery status.
 - [x] Allow confirmed removal of disabled webhooks without delivery records, preserving all queued work and history.
 - [x] Prevent narrow-screen overflow in the populated template editor and revalidate cached administration assets after updates; checked the preset, arrivals, delivery history and server settings views in a narrow browser viewport.
 - [x] Preserve unsaved server, webhook and library form edits while switching the interface language.

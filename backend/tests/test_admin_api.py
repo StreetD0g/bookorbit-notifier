@@ -291,6 +291,41 @@ def test_history_csv_is_authenticated_redacted_bounded_and_safe_for_spreadsheets
     assert len(list(csv.DictReader(io.StringIO(truncated.content.decode("utf-8-sig"))))) == 1
 
 
+def test_delivery_history_and_csv_apply_identical_source_filters(client) -> None:
+    http, engine = client
+    setup_and_login(http)
+    with Session(engine) as session:
+        target = Webhook(name="Target", url_encrypted="secret")
+        session.add(target)
+        for name in ("First", "Second"):
+            server = Server(name=name, base_url="https://books.example", api_key_encrypted="secret")
+            library = Library(server=server, name=f"{name} library", bookorbit_library_id=1)
+            book = Book(server=server, library=library, bookorbit_book_id=1, title=name)
+            session.add_all([server, library, book])
+            session.flush()
+            event = Event(book=book, server_id=server.id, library_id=library.id, event_type=EventType.BOOK_ADDED)
+            session.add(NotificationQueueItem(event=event, webhook=target, status=QueueStatus.SENT))
+            session.flush()
+            if name == "First":
+                server_id, library_id = server.id, library.id
+            else:
+                other_library_id = library.id
+        session.commit()
+    params = f"server_id={server_id}&library_id={library_id}&delivery_status=SENT"
+    rows = http.get(f"/api/v1/admin/notifications?{params}").json()
+    csv_rows = list(csv.DictReader(io.StringIO(http.get(f"/api/v1/admin/notifications/export.csv?{params}").content.decode("utf-8-sig"))))
+    assert [row["book_title"] for row in rows] == ["First"]
+    assert [row["title"] for row in csv_rows] == ["First"]
+    mismatch = f"server_id={server_id}&library_id={other_library_id}"
+    assert http.get(f"/api/v1/admin/notifications?{mismatch}").json() == []
+    assert (
+        list(csv.DictReader(io.StringIO(http.get(f"/api/v1/admin/notifications/export.csv?{mismatch}").content.decode("utf-8-sig")))) == []
+    )
+    for endpoint in ("/api/v1/admin/notifications", "/api/v1/admin/notifications/export.csv"):
+        assert http.get(endpoint + "?server_id=0").status_code == 422
+        assert http.get(endpoint + "?library_id=-1").status_code == 422
+
+
 def test_scan_history_is_authenticated_paginated_filtered_and_redacted(client) -> None:
     http, engine = client
     assert http.get("/api/v1/admin/scan-history").status_code == 401

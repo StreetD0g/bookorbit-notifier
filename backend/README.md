@@ -36,7 +36,7 @@ The operational log records successful server enable/disable changes and library
 
 The delivery history displays the next scheduled attempt for queued/retry states and the start time of an in-progress delivery. Scheduled timestamps indicate the earliest possible processing time rather than a guarantee of immediate delivery.
 
-The delivery history can be downloaded as a UTF-8 CSV for the selected status. It contains at most the 10,000 newest matching delivery records and omits credentials, connection URLs and error messages; potentially formula-like text is prefixed for safer spreadsheet use. This export is not a backup and does not include individual attempt history.
+The delivery history can be filtered by server, library and status, and downloaded as a UTF-8 CSV using the same filters. It contains at most the 10,000 newest matching delivery records and omits credentials, connection URLs and error messages; potentially formula-like text is prefixed for safer spreadsheet use. This export is not a backup and does not include individual attempt history.
 
 The overview lists each server's most recently recorded library-scan result and, while the runtime is active, its next scheduled scan when available. A library scan is a historical observation, not a live connectivity test or an aggregate assessment of every library; scheduled times can be delayed by ongoing work and are reset when the process restarts.
 

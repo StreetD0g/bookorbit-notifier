@@ -28,8 +28,8 @@ Object.assign(messages.de, {history: "Zustellhistorie", historyHelp: "Die neuest
 Object.assign(messages.en, {history: "Delivery history", historyHelp: "The latest 50 deliveries. Resending a delivered notification creates another Discord message.", attempts: "Attempts", detectedAt: "Detected", sentAt: "Sent", lastError: "Last error", discordId: "Discord message ID", retryAction: "Retry", resendConfirm: "This notification was already sent. Send another Discord message?", showHistory: "Show attempts"});
 Object.assign(messages.de, {historyHelp: "Zustellungen in Seiten zu je 50. Ein erneuter Versand bereits zugestellter Nachrichten erzeugt eine weitere Discord-Nachricht."});
 Object.assign(messages.en, {historyHelp: "Deliveries in pages of 50. Resending a delivered notification creates another Discord message."});
-Object.assign(messages.de, {exportHistory: "Zustellhistorie als CSV herunterladen", exportHistoryHint: "Der Export enthält höchstens die neuesten 10.000 Einträge des gewählten Status und keine Zugangsdaten oder Fehlertexte."});
-Object.assign(messages.en, {exportHistory: "Download delivery history as CSV", exportHistoryHint: "The export contains at most the latest 10,000 entries for the selected status and excludes credentials and error text."});
+Object.assign(messages.de, {exportHistory: "Zustellhistorie als CSV herunterladen", exportHistoryHint: "Der Export enthält höchstens die neuesten 10.000 Einträge der aktuellen Filter und keine Zugangsdaten oder Fehlertexte."});
+Object.assign(messages.en, {exportHistory: "Download delivery history as CSV", exportHistoryHint: "The export contains at most the latest 10,000 entries matching the current filters and excludes credentials and error text."});
 Object.assign(messages.de, {previewHint: "Die Vorschau zeigt Beispieldaten. Änderungen werden erst beim Speichern übernommen und nicht versendet.", templateSelect: "Vorlage", newTemplate: "Neue Vorlage", templateName: "Vorlagenname", saveTemplate: "Vorlage speichern", libraryTemplate: "Vorlage für diese Bibliothek", defaultTemplate: "Standardvorlage"});
 Object.assign(messages.en, {previewHint: "The preview shows sample data. Changes are only applied when saved and are not sent.", templateSelect: "Template", newTemplate: "New template", templateName: "Template name", saveTemplate: "Save template", libraryTemplate: "Template for this library", defaultTemplate: "Default template"});
 Object.assign(messages.de, {deliveryMode: "Versandmodus", modeSingle: "Einzeln", modeBatch: "Gebündelt", modeDaily: "Tägliche Zusammenfassung", batchSeconds: "Sammelzeit in Sekunden (30–86400)", dailyTime: "Uhrzeit der Zusammenfassung", timezone: "Zeitzone (IANA)", saveDelivery: "Versandmodus speichern", deliveryHint: "Bereits eingeplante Nachrichten behalten ihren Versandzeitpunkt."});
@@ -187,6 +187,7 @@ function translate() {
     option.textContent = "{{" + option.value + "}}" + (option.disabled ? " — " + strings().variableUnavailable : "");
   }
   populateArrivalFilters();
+  populateHistoryFilters();
   renderArrivals();
   renderLatestArrivals();
   renderScanHistory();
@@ -353,6 +354,7 @@ async function refresh() {
   overview = await call("/dashboard");
   scopes = await call("/profile-scopes");
   [servers, webhooks, libraries, templates] = await Promise.all([call("/servers"), call("/webhooks"), call("/libraries"), call("/templates")]);
+  populateHistoryFilters();
   await loadDeliveries();
   populateArrivalFilters();
   populateScanFilters();
@@ -631,19 +633,38 @@ function renderDeliveries() {
     list.append(card);
   }
 }
+function historyFilterParams() {
+  const params = new URLSearchParams();
+  for (const [selector, key] of [["#history-server", "server_id"], ["#history-library", "library_id"], ["#history-status", "delivery_status"]]) {
+    const value = document.querySelector(selector).value; if (value) params.set(key, value);
+  }
+  return params;
+}
+function updateHistoryExport() {
+  const params = historyFilterParams().toString();
+  document.querySelector("#history-export").href = "/api/v1/admin/notifications/export.csv" + (params ? "?" + params : "");
+}
+function populateHistoryFilters() {
+  const server = document.querySelector("#history-server"), library = document.querySelector("#history-library");
+  const previousServer = server.value, previousLibrary = library.value;
+  fillFilter(server, servers, previousServer);
+  fillFilter(library, libraries.filter(entry => !server.value || String(entry.server_id) === server.value), previousLibrary);
+  updateHistoryExport();
+}
 async function loadDeliveries() {
-  const request = ++deliveryRequest, params = new URLSearchParams({offset: String(deliveryOffset)});
-  const status = document.querySelector("#history-status").value;
-  if (status) params.set("delivery_status", status);
+  const request = ++deliveryRequest, params = historyFilterParams();
+  params.set("offset", String(deliveryOffset));
   const data = await call("/notifications?" + params.toString());
   if (request !== deliveryRequest) return;
   deliveries = data; renderDeliveries();
 }
-document.querySelector("#history-status").addEventListener("change", event => {
-  const status = event.currentTarget.value;
-  document.querySelector("#history-export").href = "/api/v1/admin/notifications/export.csv" + (status ? "?delivery_status=" + encodeURIComponent(status) : "");
+function changeHistoryFilters() {
+  updateHistoryExport();
   deliveryOffset = 0; loadDeliveries().catch(() => { message.textContent = strings().failed; });
-});
+}
+document.querySelector("#history-server").addEventListener("change", () => { populateHistoryFilters(); changeHistoryFilters(); });
+document.querySelector("#history-library").addEventListener("change", changeHistoryFilters);
+document.querySelector("#history-status").addEventListener("change", changeHistoryFilters);
 document.querySelector("#history-previous").addEventListener("click", () => { deliveryOffset = Math.max(0, deliveryOffset - 50); loadDeliveries().catch(() => { message.textContent = strings().failed; }); });
 document.querySelector("#history-next").addEventListener("click", () => { deliveryOffset += 50; loadDeliveries().catch(() => { message.textContent = strings().failed; }); });
 function mutationOptions(body) {

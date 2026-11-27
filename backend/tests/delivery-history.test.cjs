@@ -28,19 +28,28 @@ test("delivery history shows only relevant scheduling timestamps", () => {
   assert.ok(!lines(cards[2]).includes("Started: started"));
 });
 
-test("CSV export follows the selected delivery status", async () => {
+test("CSV export follows the selected server, library and status", () => {
   const source = fs.readFileSync(path.join(__dirname, "../app/static/admin.js"), "utf8");
-  const start = source.indexOf('document.querySelector("#history-status").addEventListener("change"');
-  const end = source.indexOf('document.querySelector("#history-previous").addEventListener', start);
+  const start = source.indexOf("function historyFilterParams()"), end = source.indexOf("function populateHistoryFilters()", start);
   assert.ok(start >= 0 && end > start);
-  const status = {addEventListener(_type, callback) { this.change = callback; }}, link = {};
-  let refreshes = 0;
-  const context = {document: {querySelector: selector => selector === "#history-status" ? status : link}, deliveryOffset: 50, loadDeliveries: async () => { refreshes++; }, encodeURIComponent};
+  const elements = {"#history-server": {value: "2"}, "#history-library": {value: "3"}, "#history-status": {value: "RETRY"}, "#history-export": {}};
+  const context = {document: {querySelector: selector => elements[selector]}, URLSearchParams};
   vm.runInNewContext(source.slice(start, end), context);
-  status.change({currentTarget: {value: "RETRY"}});
-  assert.equal(link.href, "/api/v1/admin/notifications/export.csv?delivery_status=RETRY");
-  status.change({currentTarget: {value: ""}});
-  assert.equal(link.href, "/api/v1/admin/notifications/export.csv");
-  assert.equal(context.deliveryOffset, 0);
-  assert.equal(refreshes, 2);
+  context.updateHistoryExport();
+  assert.equal(elements["#history-export"].href, "/api/v1/admin/notifications/export.csv?server_id=2&library_id=3&delivery_status=RETRY");
+  elements["#history-server"].value = ""; elements["#history-library"].value = ""; elements["#history-status"].value = "";
+  context.updateHistoryExport();
+  assert.equal(elements["#history-export"].href, "/api/v1/admin/notifications/export.csv");
+});
+
+test("delivery list requests the same filters and current page offset", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/static/admin.js"), "utf8");
+  const start = source.indexOf("function historyFilterParams()"), end = source.indexOf("function changeHistoryFilters()", start);
+  const elements = {"#history-server": {value: "2"}, "#history-library": {value: "3"}, "#history-status": {value: "FAILED"}};
+  let requested;
+  const context = {document: {querySelector: selector => elements[selector]}, URLSearchParams, deliveryRequest: 0, deliveryOffset: 50,
+    call: async url => { requested = url; return []; }, renderDeliveries() {}};
+  vm.runInNewContext(source.slice(start, end), context);
+  await context.loadDeliveries();
+  assert.equal(requested, "/notifications?server_id=2&library_id=3&delivery_status=FAILED&offset=50");
 });

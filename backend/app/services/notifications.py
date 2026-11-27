@@ -106,7 +106,15 @@ class NotificationAdministrationService:
             for row in rows
         ]
 
-    def list_deliveries(self, *, limit: int = 50, offset: int = 0, status: QueueStatus | None = None) -> list[NotificationListEntry]:
+    def list_deliveries(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        status: QueueStatus | None = None,
+        server_id: int | None = None,
+        library_id: int | None = None,
+    ) -> list[NotificationListEntry]:
         """Page newest queue records without serializing source or webhook credentials."""
 
         if not 1 <= limit <= 100 or offset < 0:
@@ -122,6 +130,10 @@ class NotificationAdministrationService:
             )
             if status is not None:
                 query = query.where(NotificationQueueItem.status == status)
+            if server_id is not None:
+                query = query.where(Event.server_id == server_id)
+            if library_id is not None:
+                query = query.where(Event.library_id == library_id)
             rows = session.execute(query.order_by(NotificationQueueItem.id.desc()).limit(limit).offset(offset)).all()
             return [
                 NotificationListEntry(
