@@ -111,3 +111,32 @@ async def test_manual_scan_does_not_trigger_unrelated_delivery(scheduler_setup: 
     assert polling.server_ids == [server.id] and delivery.calls == 0
     with pytest.raises(ValueError, match="missing or disabled"):
         await scheduler.run_manual_scan(999)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_logs_only_safe_event_codes_and_survives_log_failure(scheduler_setup) -> None:
+    factory, server = scheduler_setup
+
+    class FailedPolling:
+        async def scan_server(self, server_id, _client):
+            raise RuntimeError("secret webhook or API key")
+
+    class CaptureLog:
+        def __init__(self):
+            self.entries = []
+            self.fail = False
+
+        def write(self, code, *, server_id=None, library_id=None):
+            if self.fail:
+                raise OSError("private filesystem details")
+            self.entries.append((code, server_id, library_id))
+
+    log = CaptureLog()
+    scheduler = RuntimeScheduler(factory, ClientFactory(), FailedPolling(), Metadata(), Delivery(), event_log=log)
+    result = await scheduler.run_once(now=datetime(2026, 11, 26, tzinfo=UTC))
+    assert result.servers[0].error == "Server processing failed (RuntimeError)"
+    assert log.entries == [("server_failed", server.id, None)]
+    assert "secret" not in str(log.entries)
+    log.fail = True
+    result = await scheduler.run_once(now=datetime(2026, 11, 26, tzinfo=UTC) + timedelta(seconds=60))
+    assert len(result.servers) == 1

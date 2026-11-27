@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     admin_enabled: bool = False
     admin_origin: str | None = None
     setup_token: SecretStr | None = None
+    log_directory: str | None = None
 
 
 @lru_cache

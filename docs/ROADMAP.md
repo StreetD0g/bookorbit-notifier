@@ -53,7 +53,8 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 - [x] Add authenticated, paginated library-scan history with server, library, result and UTC-date filters; omit stored error text.
 - [x] Show recently detected arrivals and lazily loaded covers on the overview without including the initial baseline.
 - [x] Allow configuring source timeout and TLS verification, and provide an explicit read-only metadata/cover sample check for a selected library.
-- [ ] Add the full application log viewer, severity filters and automatic log rotation.
+- [x] Add a bounded, automatically rotated viewer for selected allowlisted operational events, with severity, source and UTC-date filters.
+- [ ] Expand observability beyond the selected operational events; full application/error log coverage remains incomplete.
 - [ ] Build setup, login, dashboard, server, library, webhook, history, log, settings, and template-editor views.
 - [ ] Provide German and English text, responsive layout, and dark mode by default.
 - [ ] Add safe redacted exports and confirmation flows for risky/manual resend operations.

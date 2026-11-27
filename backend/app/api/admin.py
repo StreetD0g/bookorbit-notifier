@@ -345,6 +345,34 @@ def list_notifications(
     )
 
 
+@router.get("/logs")
+def operational_logs(
+    request: Request,
+    _auth: Annotated[AuthenticationService, Depends(_authenticated)],
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = None,
+    server_id: int | None = Query(default=None, gt=0),
+    library_id: int | None = Query(default=None, gt=0),
+    from_date: date | None = None,
+    to_date: date | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    """Return only allowlisted operational events, never generic process logs."""
+
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise HTTPException(status_code=400, detail="Log date range is invalid")
+    event_log = getattr(request.app.state, "event_log", None)
+    if event_log is None:
+        return {"enabled": False, "items": [], "has_more": False}
+    try:
+        result = event_log.list_entries(
+            level=level, server_id=server_id, library_id=library_id, from_date=from_date, to_date=to_date, limit=limit, offset=offset
+        )
+    except OSError as error:
+        raise HTTPException(status_code=503, detail="Operational log is unavailable") from error
+    return {"enabled": True, **result}
+
+
 @router.get("/scan-history")
 def scan_history(
     request: Request,

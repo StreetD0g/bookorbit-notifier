@@ -12,6 +12,7 @@ services:
       BOOKORBIT_NOTIFIER_ADMIN_ENABLED: "true"
       BOOKORBIT_NOTIFIER_ADMIN_ORIGIN: http://127.0.0.1:18765
       BOOKORBIT_NOTIFIER_RUNTIME_ENABLED: "true"
+      BOOKORBIT_NOTIFIER_LOG_DIRECTORY: /data/logs
     volumes:
       - notifier-data:/data
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from app.providers.events.bookorbit.factory import EncryptedBookOrbitClientFacto
 from app.queue.worker import DefaultEmbedBuilder, DiscordDeliveryWorker, EncryptedWebhookTargetResolver
 from app.scanner.polling import BookOrbitPollingService
 from app.scheduler.runtime import RuntimeScheduler
+from app.services.event_log import EventLog
 from app.services.metadata import MetadataRefreshService
 
 
@@ -37,6 +39,12 @@ async def lifespan(app: FastAPI):
     if settings.runtime_enabled and settings.encryption_key is None:
         raise RuntimeError("An application encryption key is required when the runtime is enabled")
 
+    try:
+        event_log = EventLog(Path(settings.log_directory)) if settings.log_directory else None
+    except OSError:
+        logging.getLogger(__name__).warning("Operational event log is unavailable")
+        event_log = None
+    app.state.event_log = event_log
     engine = create_database_engine(settings.database_url)
     session_factory = create_session_factory(engine)
     app.state.session_factory = session_factory
@@ -44,6 +52,9 @@ async def lifespan(app: FastAPI):
         try:
             yield
         finally:
+            if event_log is not None:
+                event_log.close()
+            del app.state.event_log
             del app.state.session_factory
             engine.dispose()
         return
@@ -61,7 +72,9 @@ async def lifespan(app: FastAPI):
             DefaultEmbedBuilder(session_factory),
             cover_provider=source_clients,
         ),
+        event_log=event_log,
     )
+    scheduler._record("runtime_started")
     stop_event = asyncio.Event()
     worker_task = asyncio.create_task(scheduler.run_forever(stop_event), name="bookorbit-notifier-runtime")
     app.state.runtime_scheduler = scheduler
@@ -70,6 +83,10 @@ async def lifespan(app: FastAPI):
     finally:
         stop_event.set()
         await worker_task
+        scheduler._record("runtime_stopped")
+        if event_log is not None:
+            event_log.close()
+        del app.state.event_log
         del app.state.session_factory
         engine.dispose()
 

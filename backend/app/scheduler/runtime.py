@@ -13,9 +13,10 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database.models import Server
+from app.database.models import ScanStatus, Server
 from app.queue.worker import DeliveryWorkerReport
 from app.scanner.polling import ServerScanReport
+from app.services.event_log import EventLog
 from app.services.metadata import MetadataRefreshReport
 
 type SessionFactory = Callable[[], Session]
@@ -79,12 +80,14 @@ class RuntimeScheduler:
         polling_service: PollingService,
         metadata_service: MetadataService,
         delivery_service: DeliveryService,
+        event_log: EventLog | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._client_factory = client_factory
         self._polling_service = polling_service
         self._metadata_service = metadata_service
         self._delivery_service = delivery_service
+        self._event_log = event_log
         self._next_due: dict[int, datetime] = {}
 
     def scheduled_scans(self) -> dict[int, datetime]:
@@ -101,6 +104,14 @@ class RuntimeScheduler:
         for server_id, interval_seconds in targets:
             reports.append(await self._run_server(server_id, interval_seconds, timestamp))
         delivery = await self._delivery_service.process_once(now=timestamp)
+        for count, code in (
+            (delivery.sent, "delivery_sent"),
+            (delivery.retried, "delivery_retry"),
+            (delivery.failed, "delivery_failed"),
+            (delivery.recovered_stale, "delivery_recovered"),
+        ):
+            if count:
+                self._record(code)
         return SchedulerTickReport(servers=tuple(reports), delivery=delivery)
 
     async def run_manual_scan(self, server_id: int, *, now: datetime | None = None) -> ScheduledServerReport:
@@ -125,6 +136,7 @@ class RuntimeScheduler:
                 # A transient database/transport failure must not permanently stop polling.
                 # Keep raw adapter messages out of logs because they may contain credentials.
                 logger.warning("Runtime scheduler tick failed (%s)", type(error).__name__)
+                self._record("scheduler_failed")
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=tick_seconds)
             except TimeoutError:
@@ -162,7 +174,23 @@ class RuntimeScheduler:
                 metadata=None,
                 error=f"Server processing failed ({type(error).__name__})",
             )
+            self._record("server_failed", server_id=server_id)
         else:
             report = ScheduledServerReport(server_id=server_id, scan=scan, metadata=metadata, error=None)
+            for library in scan.libraries:
+                status = library.result.scan_status if library.result is not None else ScanStatus.FAILED
+                code = {ScanStatus.SUCCEEDED: "scan_succeeded", ScanStatus.PARTIAL: "scan_partial", ScanStatus.FAILED: "scan_failed"}[
+                    status
+                ]
+                self._record(code, server_id=server_id, library_id=library.library_id)
         self._next_due[server_id] = now + timedelta(seconds=interval_seconds)
         return report
+
+    def _record(self, code: str, *, server_id: int | None = None, library_id: int | None = None) -> None:
+        """A log storage failure must not discard detection or stop delivery."""
+
+        if self._event_log is not None:
+            try:
+                self._event_log.write(code, server_id=server_id, library_id=library_id)
+            except OSError:
+                logger.warning("Operational event could not be recorded")

@@ -30,7 +30,9 @@ The overview lists each server's most recently recorded library-scan result and,
 
 The overview also shows up to five recently detected arrivals with covers loaded lazily through the authenticated administrator cover endpoint. The silent initial baseline is excluded, and a missing cover does not prevent the item from being shown.
 
-Import Logs also includes a paginated library-scan history with server, library, result and UTC date filters. It displays scan times and counts but deliberately excludes stored error messages and connection details. This is not yet the full application log viewer or automatic log rotation.
+Import Logs also includes a paginated library-scan history with server, library, result and UTC date filters. It displays scan times and counts but deliberately excludes stored error messages and connection details. This database history is separate from the rotated operational-event log.
+
+Settings includes an optional operational-event viewer. Set `BOOKORBIT_NOTIFIER_LOG_DIRECTORY` to a writable directory to enable it (the local Compose deployment uses `/data/logs`). Only predefined, non-secret event codes, UTC time and optional internal server/library IDs are written; arbitrary exception messages and URLs are excluded. The viewer filters by severity, server, library and UTC date. Files rotate at approximately 1 MB with four retained backups. These selected events are not a complete application or error log; existing events before activation are not reconstructed. A logging failure must not stop scans or delivery.
 
 Scan records created before the start-time correction may show the completion time as their start time; the original start cannot be reconstructed. New successful, partial and failed scans record their start before querying BookOrbit.
 

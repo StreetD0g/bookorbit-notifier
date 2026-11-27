@@ -90,6 +90,10 @@ Object.assign(messages.de, {connectionSettings: "Verbindungseinstellungen", publ
 Object.assign(messages.en, {connectionSettings: "Connection settings", publicUrl: "Public server URL (optional)", connectionTimeout: "Connection timeout in seconds", verifySsl: "Verify TLS certificate", publicUrlHelp: "The public URL is stored; direct book links are not generated yet.", verifySslHelp: "Without certificate verification, the server identity cannot be verified."});
 Object.assign(messages.de, {probeLibrary: "Bibliothek für Beispielprüfung", probeContent: "Metadaten und Cover prüfen", probeEmpty: "Kein Beispielmedium in dieser Bibliothek gefunden.", probeCoverOk: "Metadaten und Cover sind für das Beispiel abrufbar.", probeCoverMissing: "Metadaten sind abrufbar; für das Beispiel ist kein Cover vorhanden.", probeFailed: "Beispielprüfung fehlgeschlagen. Bitte Verbindung und Leseberechtigung prüfen."});
 Object.assign(messages.en, {probeLibrary: "Library for sample check", probeContent: "Check metadata and cover", probeEmpty: "No sample media found in this library.", probeCoverOk: "Metadata and cover are accessible for the sample.", probeCoverMissing: "Metadata is accessible; the sample has no cover.", probeFailed: "Sample check failed. Check the connection and read access."});
+Object.assign(messages.de, {operationalLogs: "Systemprotokoll", logsHelp: "Ausgewählte Betriebsereignisse seit Aktivierung; kein vollständiges Anwendungs- oder Fehlerprotokoll. Zeitangaben in UTC.", logsLevel: "Schweregrad", logsPages: "Systemprotokoll Seiten", logsDisabled: "Das Systemprotokoll ist nicht konfiguriert oder nicht verfügbar.", logsEmpty: "Keine Ereignisse für diese Auswahl.", runtime_started: "Verarbeitung gestartet", runtime_stopped: "Verarbeitung beendet", scan_succeeded: "Bibliotheksscan erfolgreich", scan_partial: "Bibliotheksscan unvollständig", scan_failed: "Bibliotheksscan fehlgeschlagen", server_failed: "Serververarbeitung fehlgeschlagen", scheduler_failed: "Verarbeitungszyklus fehlgeschlagen", delivery_sent: "Benachrichtigungen zugestellt", delivery_retry: "Zustellung wird erneut versucht", delivery_failed: "Zustellung fehlgeschlagen", delivery_recovered: "Unterbrochene Zustellungen wiederhergestellt"});
+Object.assign(messages.en, {operationalLogs: "Operational log", logsHelp: "Selected events since activation; this is not a complete application or error log. Times are UTC.", logsLevel: "Severity", logsPages: "Operational log pages", logsDisabled: "The operational log is not configured or unavailable.", logsEmpty: "No events match these filters.", runtime_started: "Processing started", runtime_stopped: "Processing stopped", scan_succeeded: "Library scan succeeded", scan_partial: "Library scan incomplete", scan_failed: "Library scan failed", server_failed: "Server processing failed", scheduler_failed: "Processing cycle failed", delivery_sent: "Notifications delivered", delivery_retry: "Delivery will be retried", delivery_failed: "Delivery failed", delivery_recovered: "Interrupted deliveries recovered"});
+Object.assign(messages.de, {logsFrom: "Ereignisse ab (UTC)", logsTo: "Ereignisse bis (UTC)"});
+Object.assign(messages.en, {logsFrom: "Events from (UTC)", logsTo: "Events through (UTC)"});
 messages.de.loadCover = "Cover laden";
 messages.en.loadCover = "Load cover";
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
@@ -113,10 +117,11 @@ let latestArrivals = [];
 let arrivalsRequest = 0;
 let arrivalsOffset = 0;
 let scanRows = [], scanOffset = 0, scanRequest = 0, scanHasMore = false;
+let logRows = [], logOffset = 0, logRequest = 0, logHasMore = false, logEnabled = false;
 function strings() { return messages[language.value]; }
 
 // Changing views only hides existing controls, so unsaved editor input is retained.
-const viewCategories = {overview: "overview", libraries: "bookorbit", presets: "presets", arrivals: "imports", "scan-history": "imports", history: "discord", servers: "settings", webhooks: "settings", sender: "settings"};
+const viewCategories = {overview: "overview", libraries: "bookorbit", presets: "presets", arrivals: "imports", "scan-history": "imports", history: "discord", servers: "settings", webhooks: "settings", sender: "settings", logs: "settings"};
 const legacyViews = {"dashboard-title": "overview", "arrivals-heading": "arrivals", "servers-heading": "servers", "libraries-heading": "libraries", "webhooks-heading": "webhooks", "preview-heading": "presets", "history-heading": "history", "account-settings": "servers"};
 function selectView() {
   const fragment = location.hash.slice(1);
@@ -150,6 +155,7 @@ function translate() {
   renderArrivals();
   renderLatestArrivals();
   renderScanHistory();
+  renderOperationalLogs();
   updatePreviewSender();
 }
 function cookie(name) {
@@ -315,8 +321,10 @@ async function refresh() {
   await loadDeliveries();
   populateArrivalFilters();
   populateScanFilters();
+  populateLogFilters();
   await loadArrivals();
   await loadScanHistory();
+  try { await loadOperationalLogs(); } catch { logRows = []; logEnabled = false; logHasMore = false; renderOperationalLogs(); }
   latestArrivals = await call("/arrivals?limit=5"); renderLatestArrivals();
   populateTemplateSelector();
   renderManagement();
@@ -371,6 +379,36 @@ function fillFilter(select, entries, previous) {
   for (const entry of entries) { const option = document.createElement("option"); option.value = String(entry.id); option.textContent = entry.name; select.append(option); }
   if ([...select.options].some(option => option.value === previous)) select.value = previous;
 }
+function populateLogFilters() {
+  const server = document.querySelector("#logs-server"), library = document.querySelector("#logs-library");
+  const previousServer = server.value, previousLibrary = library.value;
+  fillFilter(server, servers, previousServer);
+  fillFilter(library, libraries.filter(entry => !server.value || String(entry.server_id) === server.value), previousLibrary);
+}
+async function loadOperationalLogs() {
+  const request = ++logRequest, params = new URLSearchParams({offset: String(logOffset)});
+  for (const [selector, key] of [["#logs-level", "level"], ["#logs-server", "server_id"], ["#logs-library", "library_id"], ["#logs-from", "from_date"], ["#logs-to", "to_date"]]) {
+    const value = document.querySelector(selector).value; if (value) params.set(key, value);
+  }
+  const result = await call("/logs?" + params.toString());
+  if (request !== logRequest) return;
+  logRows = result.items; logHasMore = result.has_more; logEnabled = result.enabled; renderOperationalLogs();
+}
+function renderOperationalLogs() {
+  const container = document.querySelector("#logs-list"); container.replaceChildren();
+  document.querySelector("#logs-previous").disabled = logOffset === 0;
+  document.querySelector("#logs-next").disabled = !logHasMore;
+  document.querySelector("#logs-page").textContent = strings().page + " " + (Math.floor(logOffset / 50) + 1);
+  if (!logEnabled || !logRows.length) { const empty = document.createElement("p"); empty.textContent = logEnabled ? strings().logsEmpty : strings().logsDisabled; container.append(empty); return; }
+  for (const entry of logRows) {
+    const item = document.createElement("p"), server = servers.find(source => source.id === entry.server_id), library = libraries.find(source => source.id === entry.library_id);
+    item.textContent = [entry.at, entry.level, strings()[entry.code] || "—", server?.name, library?.name].filter(Boolean).join(" · "); container.append(item);
+  }
+}
+document.querySelector("#logs-server").addEventListener("change", populateLogFilters);
+document.querySelector("#logs-filters").addEventListener("submit", event => { event.preventDefault(); logOffset = 0; loadOperationalLogs().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#logs-previous").addEventListener("click", () => { logOffset = Math.max(0, logOffset - 50); loadOperationalLogs().catch(() => { message.textContent = strings().failed; }); });
+document.querySelector("#logs-next").addEventListener("click", () => { logOffset += 50; loadOperationalLogs().catch(() => { message.textContent = strings().failed; }); });
 function populateScanFilters() {
   const server = document.querySelector("#scan-server"), library = document.querySelector("#scan-library");
   const previousServer = server.value, previousLibrary = library.value;
@@ -775,7 +813,7 @@ document.querySelector("#change-password-form").addEventListener("submit", async
   const button = event.currentTarget.querySelector("button[type=submit]"); button.disabled = true;
   try {
     await call("/change-password", {...mutationOptions({current_password: current.value, new_password: replacement.value}), method: "POST"});
-    originalProfiles.clear(); counts = null; dashboard.hidden = true; authPanel.hidden = false; message.textContent = strings().passwordChanged;
+    originalProfiles.clear(); logRows = []; logEnabled = false; ++logRequest; counts = null; dashboard.hidden = true; authPanel.hidden = false; message.textContent = strings().passwordChanged;
   } catch { message.textContent = strings().failed; }
   finally { current.value = ""; replacement.value = ""; repeat.value = ""; button.disabled = false; }
 });
@@ -809,7 +847,7 @@ document.querySelector("#profile-form").addEventListener("submit", async event =
 document.querySelector("#logout").addEventListener("click", async () => {
   try {
     await call("/logout", {method: "POST", headers: {"X-CSRF-Token": cookie("bookorbit_csrf")}});
-    originalProfiles.clear(); counts = null; dashboard.hidden = true; authPanel.hidden = false; message.textContent = strings().signedOut;
+    originalProfiles.clear(); logRows = []; logEnabled = false; ++logRequest; counts = null; dashboard.hidden = true; authPanel.hidden = false; message.textContent = strings().signedOut;
   } catch { message.textContent = strings().failed; }
 });
 refresh().catch(() => {});

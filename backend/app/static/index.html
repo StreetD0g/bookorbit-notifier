@@ -56,6 +56,7 @@
         <a href="#view-servers" data-menu="settings" data-text="servers" hidden>BookOrbit-Server</a>
         <a href="#view-webhooks" data-menu="settings" data-text="webhooks" hidden>Discord-Webhooks</a>
         <a href="#view-sender" data-menu="settings" data-text="senderProfile" hidden>Absenderprofil</a>
+        <a href="#view-logs" data-menu="settings" data-text="operationalLogs" hidden>Systemprotokoll</a>
       </nav>
       <div id="view-overview" data-view="overview">
       <h2 id="dashboard-title" data-text="overview">Übersicht</h2>
@@ -171,6 +172,20 @@
         <select id="history-status"><option value="" data-text="all">Alle</option><option value="WAITING_FOR_METADATA">WAITING_FOR_METADATA</option><option value="READY">READY</option><option value="QUEUED">QUEUED</option><option value="SENDING">SENDING</option><option value="SENT">SENT</option><option value="RETRY">RETRY</option><option value="FAILED">FAILED</option><option value="SKIPPED">SKIPPED</option></select>
         <div id="delivery-list"></div>
         <nav aria-label="Zustellungen Seiten" data-label="historyPages"><button type="button" id="history-previous" data-text="previous">Zurück</button><span id="history-page" aria-live="polite"></span><button type="button" id="history-next" data-text="next">Weiter</button></nav>
+      </section>
+      <section id="view-logs" data-view="logs" class="management" aria-labelledby="logs-heading" hidden>
+        <h2 id="logs-heading" data-text="operationalLogs">Systemprotokoll</h2>
+        <p data-text="logsHelp">Ausgewählte Betriebsereignisse seit Aktivierung; kein vollständiges Anwendungs- oder Fehlerprotokoll. Zeitangaben in UTC.</p>
+        <form id="logs-filters">
+          <label for="logs-level" data-text="logsLevel">Schweregrad</label><select id="logs-level"><option value="" data-text="all">Alle</option><option>DEBUG</option><option>INFO</option><option>WARNING</option><option>ERROR</option><option>CRITICAL</option></select>
+          <label for="logs-server" data-text="arrivalsServer">Server</label><select id="logs-server"></select>
+          <label for="logs-library" data-text="arrivalsLibrary">Bibliothek</label><select id="logs-library"></select>
+          <label for="logs-from" data-text="logsFrom">Ereignisse ab (UTC)</label><input id="logs-from" type="date">
+          <label for="logs-to" data-text="logsTo">Ereignisse bis (UTC)</label><input id="logs-to" type="date">
+          <button type="submit" data-text="applyFilters">Filter anwenden</button>
+        </form>
+        <div id="logs-list"></div>
+        <nav aria-label="Systemprotokoll Seiten" data-label="logsPages"><button type="button" id="logs-previous" data-text="previous">Zurück</button><span id="logs-page" aria-live="polite"></span><button type="button" id="logs-next" data-text="next">Weiter</button></nav>
       </section>
       <section id="view-sender" data-view="sender" class="management" hidden>
       <h2 data-text="senderProfile">Absenderprofil</h2>

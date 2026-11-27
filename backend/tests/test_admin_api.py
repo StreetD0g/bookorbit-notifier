@@ -124,6 +124,27 @@ def test_dashboard_reports_runtime_schedule_only_for_enabled_servers(client, mon
     assert "secret" not in str(result)
 
 
+def test_operational_log_endpoint_is_authenticated_and_filtered(client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from app.services.event_log import EventLog
+
+    http, _engine = client
+    assert http.get("/api/v1/admin/logs").status_code == 401
+    setup_and_login(http)
+    assert http.get("/api/v1/admin/logs").json() == {"enabled": False, "items": [], "has_more": False}
+    log = EventLog(tmp_path / "events")
+    try:
+        log.write("scan_failed", server_id=1, library_id=2)
+        log.write("runtime_started")
+        monkeypatch.setitem(app.state._state, "event_log", log)
+        result = http.get("/api/v1/admin/logs?level=ERROR&server_id=1&library_id=2")
+        assert result.status_code == 200 and result.json()["items"][0]["code"] == "scan_failed"
+        assert http.get("/api/v1/admin/logs?level=INVALID").status_code == 422
+        assert http.get("/api/v1/admin/logs?from_date=2026-02-02&to_date=2026-01-01").status_code == 400
+        assert http.get("/api/v1/admin/logs?limit=101").status_code == 422
+    finally:
+        log.close()
+
+
 def test_scan_history_is_authenticated_paginated_filtered_and_redacted(client) -> None:
     http, engine = client
     assert http.get("/api/v1/admin/scan-history").status_code == 401
