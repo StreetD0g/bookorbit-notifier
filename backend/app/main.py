@@ -10,6 +10,8 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+from starlette.types import Scope
 
 from app.api.admin import router as admin_router
 from app.api.poc import router as poc_router
@@ -101,7 +103,18 @@ app = FastAPI(
 app.include_router(poc_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 _static_dir = Path(__file__).parent / "static"
-app.mount("/admin-assets", StaticFiles(directory=_static_dir), name="admin-assets")
+
+
+class RevalidatedStaticFiles(StaticFiles):
+    """Require browsers to revalidate UI assets after an application update."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/admin-assets", RevalidatedStaticFiles(directory=_static_dir), name="admin-assets")
 
 
 @app.get("/admin", include_in_schema=False)

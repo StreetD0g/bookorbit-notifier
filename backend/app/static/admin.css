@@ -20,8 +20,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 dl { display: grid; grid-template-columns: 1fr auto; max-width: 30rem; gap: .5rem; }
 dd { margin: 0; font-weight: 700; }
 #message { min-height: 1.5em; }
-.preview-editor { display: grid; gap: .6rem; margin-top: 2rem; padding: 0; }
+.preview-editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem; margin-top: 2rem; padding: 0; }
+/* Long variable names and Discord text must not widen the editor on small screens. */
+.preview-editor > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
+#metadata-fields { overflow-wrap: anywhere; }
+#metadata-fields button { max-width: 100%; }
 .discord-preview { display: flex; gap: .8rem; background: #313338; color: #f3f4f6; padding: 1rem; border-radius: .4rem; overflow-wrap: anywhere; }
+.discord-preview > div:last-child { min-width: 0; flex: 1; }
 .discord-avatar { display: grid; place-items: center; flex: 0 0 2.5rem; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: #5865f2; font-weight: bold; }
 .discord-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
 .discord-embed { background: #2b2d31; border-left: 4px solid #2f855a; border-radius: .3rem; padding: .8rem; margin-top: .5rem; }

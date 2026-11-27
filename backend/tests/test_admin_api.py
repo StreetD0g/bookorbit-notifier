@@ -145,6 +145,11 @@ def test_setup_login_cookie_csrf_and_logout(client) -> None:
     assert "frame-ancestors 'none'" in http.get("/admin").headers["content-security-policy"]
     assert http.get("/admin-assets/admin.js").status_code == 200
     assert http.get("/admin-assets/admin.css").status_code == 200
+    stylesheet = http.get("/admin-assets/admin.css")
+    assert stylesheet.headers["cache-control"] == "no-cache"
+    revalidated = http.get("/admin-assets/admin.css", headers={"if-none-match": stylesheet.headers["etag"]})
+    assert revalidated.status_code == 304 and revalidated.headers["cache-control"] == "no-cache"
+    assert http.get("/admin-assets/admin.js").headers["cache-control"] == "no-cache"
     assert ':root[data-theme="light"]' in http.get("/admin-assets/admin.css").text
     assert (
         http.post(
