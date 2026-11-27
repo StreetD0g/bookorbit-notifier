@@ -83,6 +83,8 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 
 ## Phase 5 – production readiness
 
+- [x] Add an explicitly tagged GHCR workflow that verifies code and builds Linux AMD64/ARM64 images from commits approved on `release`.
+
 - [ ] Add encrypted secret storage, Argon2id sessions, CSRF/XSS protections, and security tests.
 - [ ] Add consistent SQLite backups, restore validation, JSON config export, and CSV history export.
 - [ ] Add Docker multi-stage build, Compose example, health check, and AMD64/ARM64 GitHub Actions release workflow.
