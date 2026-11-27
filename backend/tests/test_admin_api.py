@@ -221,6 +221,41 @@ def test_operational_log_endpoint_is_authenticated_and_filtered(client, monkeypa
         log.close()
 
 
+def test_admin_changes_create_redacted_filtered_operational_events(client, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from app.services.event_log import EventLog
+
+    http, engine = client
+    monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    with Session(engine) as session:
+        server = Server(name="Source", base_url="https://private.example", api_key_encrypted="secret-value", enabled=True)
+        library = Library(server=server, name="Books", bookorbit_library_id=4)
+        session.add(library)
+        session.commit()
+        server_id, library_id = server.id, library.id
+    log = EventLog(tmp_path / "events")
+    monkeypatch.setitem(app.state._state, "event_log", log)
+    try:
+        csrf = setup_and_login(http)
+        headers = {"origin": ORIGIN, "x-csrf-token": csrf}
+        path = f"/api/v1/admin/servers/{server_id}/enabled"
+        assert http.put(path, headers=headers, json={"enabled": False}).status_code == 200
+        assert http.put(path, headers=headers, json={"enabled": False}).status_code == 200
+        metadata_path = f"/api/v1/admin/libraries/{library_id}/metadata"
+        assert http.put(metadata_path, headers=headers, json={"delay_seconds": 60, "max_wait_seconds": 30}).status_code == 400
+        assert http.put(metadata_path, headers=headers, json={"delay_seconds": 30, "max_wait_seconds": 60}).status_code == 200
+        response = http.get(f"/api/v1/admin/logs?server_id={server_id}")
+        assert [entry["code"] for entry in response.json()["items"]] == ["library_metadata_updated", "server_disabled"]
+        filtered = http.get(f"/api/v1/admin/logs?library_id={library_id}").json()["items"]
+        assert len(filtered) == 1 and filtered[0]["server_id"] == server_id
+        assert "secret-value" not in response.text and "private.example" not in response.text
+        monkeypatch.setattr(log, "write", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("private")))
+        assert http.put(path, headers=headers, json={"enabled": True}).status_code == 200
+        assert http.put(metadata_path, headers=headers, json={"delay_seconds": 10, "max_wait_seconds": 60}).status_code == 200
+    finally:
+        log.close()
+
+
 def test_scan_history_is_authenticated_paginated_filtered_and_redacted(client) -> None:
     http, engine = client
     assert http.get("/api/v1/admin/scan-history").status_code == 401
@@ -335,6 +370,8 @@ def test_retry_sent_requires_confirmation_and_csrf(client) -> None:
     path = f"/api/v1/admin/notifications/{item_id}/retry"
     listing = http.get("/api/v1/admin/notifications")
     assert listing.status_code == 200 and listing.json()[0]["book_title"] == "New"
+    assert listing.json()[0]["next_retry_at"].startswith("2026-11-27T12:00:00")
+    assert listing.json()[0]["sending_started_at"] is None
     assert len(http.get("/api/v1/admin/notifications?delivery_status=SENT").json()) == 1
     assert http.get("/api/v1/admin/notifications?delivery_status=FAILED").json() == []
     assert http.get("/api/v1/admin/notifications?offset=1").json() == []

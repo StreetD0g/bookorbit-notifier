@@ -104,6 +104,8 @@ Object.assign(messages.de, {logsFrom: "Ereignisse ab (UTC)", logsTo: "Ereignisse
 Object.assign(messages.en, {logsFrom: "Events from (UTC)", logsTo: "Events through (UTC)"});
 Object.assign(messages.de, {metadata_released: "Metadatenprüfung: Medien freigegeben", metadata_deferred: "Metadatenprüfung: Medien warten weiter", metadata_refresh_failed: "Metadatenprüfung: Abruf fehlgeschlagen"});
 Object.assign(messages.en, {metadata_released: "Metadata check: media released", metadata_deferred: "Metadata check: media still waiting", metadata_refresh_failed: "Metadata check: retrieval failed"});
+Object.assign(messages.de, {server_enabled: "Serverüberwachung aktiviert", server_disabled: "Serverüberwachung deaktiviert", library_routing_updated: "Bibliothekszuordnung gespeichert", library_delivery_updated: "Versandeinstellungen gespeichert", library_metadata_updated: "Metadaten-Wartezeit gespeichert"});
+Object.assign(messages.en, {server_enabled: "Server monitoring enabled", server_disabled: "Server monitoring disabled", library_routing_updated: "Library routing saved", library_delivery_updated: "Delivery settings saved", library_metadata_updated: "Metadata waiting time saved"});
 messages.de.loadCover = "Cover laden";
 messages.en.loadCover = "Load cover";
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
@@ -583,7 +585,7 @@ function renderDeliveries() {
     const heading = document.createElement("h3"); heading.textContent = delivery.book_title || "—"; card.append(heading);
     const source = document.createElement("p"); source.textContent = [delivery.server_name, delivery.library_name, delivery.webhook_name].join(" · "); card.append(source);
     const state = document.createElement("p"); state.textContent = delivery.status + " · " + strings().attempts + ": " + delivery.attempt_count; card.append(state);
-    for (const [label, value] of [[strings().detectedAt, delivery.detected_at], [strings().sentAt, delivery.sent_at], [strings().lastError, delivery.last_error], [strings().discordId, delivery.discord_message_id]]) {
+    for (const [label, value] of [[strings().detectedAt, delivery.detected_at], [strings().sentAt, delivery.sent_at], [strings().nextRetry, ["RETRY", "QUEUED"].includes(delivery.status) ? delivery.next_retry_at : null], [strings().sendingStarted, delivery.status === "SENDING" ? delivery.sending_started_at : null], [strings().lastError, delivery.last_error], [strings().discordId, delivery.discord_message_id]]) {
       if (value) { const line = document.createElement("p"); line.textContent = label + ": " + value; card.append(line); }
     }
     const details = document.createElement("ul"); details.hidden = true; card.append(details);

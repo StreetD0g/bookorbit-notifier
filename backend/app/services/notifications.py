@@ -51,6 +51,8 @@ class NotificationListEntry:
     webhook_name: str
     detected_at: datetime
     sent_at: datetime | None
+    next_retry_at: datetime | None
+    sending_started_at: datetime | None
     status: QueueStatus
     attempt_count: int
     last_error: str | None
@@ -130,6 +132,8 @@ class NotificationAdministrationService:
                     webhook_name=webhook,
                     detected_at=detected,
                     sent_at=item.sent_at,
+                    next_retry_at=item.next_retry_at,
+                    sending_started_at=item.sending_started_at,
                     status=item.status,
                     attempt_count=item.attempt_count,
                     last_error=item.last_error,

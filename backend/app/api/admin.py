@@ -1,5 +1,6 @@
 """Opt-in administrator authentication and notification status endpoints."""
 
+import logging
 from datetime import UTC, date, datetime, time, timedelta
 from hmac import compare_digest
 from pathlib import Path
@@ -9,7 +10,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field, SecretStr, StrictBool
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.core.config import get_settings
 from app.core.crypto import SecretCipher
@@ -51,6 +52,33 @@ from app.templates.safe import ALLOWED_TEMPLATE_VARIABLES, DEFAULT_SERIES_NUMBER
 router = APIRouter(prefix="/admin", tags=["administrator"])
 _SESSION_COOKIE = "bookorbit_session"
 _CSRF_COOKIE = "bookorbit_csrf"
+
+
+def _record_admin_event(request: Request, code: str, *, server_id: int | None = None, library_id: int | None = None) -> None:
+    """Best-effort allowlisted audit events never include credentials or user-provided text."""
+
+    event_log = getattr(request.app.state, "event_log", None)
+    if event_log is None:
+        return
+    try:
+        event_log.write(code, server_id=server_id, library_id=library_id)
+    except OSError:
+        logging.getLogger(__name__).warning("Operational event could not be recorded")
+
+
+def _record_library_event(request: Request, code: str, library_id: int) -> None:
+    """Include the parent source in filters without copying library names or settings."""
+
+    if getattr(request.app.state, "event_log", None) is None:
+        return
+    try:
+        with request.app.state.session_factory() as session:
+            library = session.get(Library, library_id)
+            server_id = library.server_id if library is not None else None
+    except SQLAlchemyError:
+        logging.getLogger(__name__).warning("Operational event could not be recorded")
+        return
+    _record_admin_event(request, code, server_id=server_id, library_id=library_id)
 
 
 class PasswordInput(BaseModel):
@@ -763,7 +791,10 @@ def set_server_enabled(
         server = session.get(Server, server_id)
         if server is None:
             raise HTTPException(status_code=404, detail="Server not found")
+        changed = server.enabled != payload.enabled
         server.enabled = payload.enabled
+    if changed:
+        _record_admin_event(request, "server_enabled" if payload.enabled else "server_disabled", server_id=server_id)
     return {"status": "saved"}
 
 
@@ -1063,6 +1094,7 @@ def configure_library_routing(
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    _record_library_event(request, "library_routing_updated", library_id)
     return {"status": "saved"}
 
 
@@ -1082,6 +1114,7 @@ def configure_library_delivery(
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    _record_library_event(request, "library_delivery_updated", library_id)
     return {"status": "saved"}
 
 
@@ -1097,6 +1130,7 @@ def configure_library_metadata(
         )
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    _record_library_event(request, "library_metadata_updated", library_id)
     return {"status": "saved"}
 
 

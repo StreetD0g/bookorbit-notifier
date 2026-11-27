@@ -32,6 +32,10 @@ Each library can configure the initial metadata delay and maximum wait from zero
 
 The operational log also reports when metadata checks release media, defer them, or encounter source errors. These are server-level aggregate events: one entry can represent multiple media, and a pass can have more than one outcome. Source error text and credentials are excluded.
 
+The operational log records successful server enable/disable changes and library routing, delivery and metadata-setting saves using IDs only, without configuration values or credentials. It is best effort and is not a complete security audit: if log storage is unavailable, the requested change can still succeed.
+
+The delivery history displays the next scheduled attempt for queued/retry states and the start time of an in-progress delivery. Scheduled timestamps indicate the earliest possible processing time rather than a guarantee of immediate delivery.
+
 The overview lists each server's most recently recorded library-scan result and, while the runtime is active, its next scheduled scan when available. A library scan is a historical observation, not a live connectivity test or an aggregate assessment of every library; scheduled times can be delayed by ongoing work and are reset when the process restarts.
 
 The overview also shows up to five recently detected arrivals with covers loaded lazily through the authenticated administrator cover endpoint. The silent initial baseline is excluded, and a missing cover does not prevent the item from being shown.
