@@ -11,6 +11,7 @@ from app.database.models import Server
 from app.queue.worker import DeliveryWorkerReport
 from app.scanner.polling import ServerScanReport
 from app.scheduler.runtime import RuntimeScheduler
+from app.services.event_log import EventLog
 from app.services.metadata import MetadataRefreshReport
 
 
@@ -140,3 +141,34 @@ async def test_scheduler_logs_only_safe_event_codes_and_survives_log_failure(sch
     log.fail = True
     result = await scheduler.run_once(now=datetime(2026, 11, 26, tzinfo=UTC) + timedelta(seconds=60))
     assert len(result.servers) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("report", "expected"),
+    [
+        (MetadataRefreshReport(checked=0, released=0, deferred=0, failed=0), set()),
+        (
+            MetadataRefreshReport(checked=3, released=1, deferred=2, failed=1),
+            {"metadata_released", "metadata_deferred", "metadata_refresh_failed"},
+        ),
+    ],
+)
+async def test_metadata_results_are_recorded_without_source_details(scheduler_setup, tmp_path: Path, report, expected) -> None:
+    factory, server = scheduler_setup
+
+    class ReportMetadata:
+        async def process_due_events(self, server_id, _client, *, now):
+            return report
+
+    log = EventLog(tmp_path / "events")
+    try:
+        scheduler = RuntimeScheduler(factory, ClientFactory(), Polling(), ReportMetadata(), Delivery(), event_log=log)
+        result = await scheduler.run_manual_scan(server.id, now=datetime(2026, 11, 26, tzinfo=UTC))
+        assert result.error is None
+        entries = log.list_entries()["items"]
+        assert {entry["code"] for entry in entries} == expected
+        assert all(entry["server_id"] == server.id and entry["library_id"] is None for entry in entries)
+        assert "encrypted" not in str(entries) and "books.example" not in str(entries)
+    finally:
+        log.close()

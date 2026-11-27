@@ -47,6 +47,7 @@ Every task below has a concrete verification condition. Phase 6 is intentionally
 
 - [x] Configure metadata delay and maximum wait independently per library, preserving existing event deadlines.
 - [x] Show metadata-check counts, wait deadlines and delivery retry or in-progress timing in arrival details without exposing source error text.
+- [x] Record server-level metadata release, deferral and fetch failures in the allowlisted operational log without source error text.
 - [x] Allow confirmed removal of disabled webhooks without delivery records, preserving all queued work and history.
 - [ ] Design server removal and webhook removal with existing delivery records without silently losing detection or delivery history.
 

@@ -67,3 +67,25 @@ test("arrival details show waiting and retry diagnostics as text", async () => {
   assert.ok(lines.includes("Failed: ✓"));
   assert.ok(lines.includes("Retry: tomorrow"));
 });
+
+test("reopening arrival details reloads state and ignores older responses", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../app/static/admin.js"), "utf8");
+  const start = source.indexOf("function createArrivalDetails("), end = source.indexOf("function renderArrivals(", start);
+  const requests = [];
+  const context = {document: {createElement: node}, strings: () => ({details: "Details", loadCover: "Cover", metadataProcessing: "Metadata", eventStatus: "Status", metadataAttempts: "Checks"}), message: {}, encodeURIComponent, call: () => new Promise(resolve => requests.push(resolve))};
+  vm.runInNewContext(source.slice(start, end), context);
+  const details = context.createArrivalDetails({event_id: 1});
+  details.open = true; const first = details.handlers.toggle();
+  details.open = false; await details.handlers.toggle();
+  details.open = true; const second = details.handlers.toggle();
+  const response = status => ({metadata: {}, metadata_processing: {status, attempt_count: 1}, deliveries: [], history_truncated: false});
+  requests[1](response("READY")); await second;
+  requests[0](response("STALE")); await first;
+  const lines = descendants(details, "li").map(item => item.textContent);
+  assert.ok(lines.includes("Status: READY"));
+  assert.ok(!lines.includes("Status: STALE"));
+  details.open = false; await details.handlers.toggle();
+  details.open = true; const third = details.handlers.toggle();
+  requests[2](response("COMPLETED")); await third;
+  assert.ok(descendants(details, "li").some(item => item.textContent === "Status: COMPLETED"));
+});

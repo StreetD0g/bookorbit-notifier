@@ -102,6 +102,8 @@ Object.assign(messages.de, {operationalLogs: "Systemprotokoll", logsHelp: "Ausge
 Object.assign(messages.en, {operationalLogs: "Operational log", logsHelp: "Selected events since activation; this is not a complete application or error log. Times are UTC.", logsLevel: "Severity", logsPages: "Operational log pages", logsDisabled: "The operational log is not configured or unavailable.", logsEmpty: "No events match these filters.", runtime_started: "Processing started", runtime_stopped: "Processing stopped", scan_succeeded: "Library scan succeeded", scan_partial: "Library scan incomplete", scan_failed: "Library scan failed", server_failed: "Server processing failed", scheduler_failed: "Processing cycle failed", delivery_sent: "Notifications delivered", delivery_retry: "Delivery will be retried", delivery_failed: "Delivery failed", delivery_recovered: "Interrupted deliveries recovered"});
 Object.assign(messages.de, {logsFrom: "Ereignisse ab (UTC)", logsTo: "Ereignisse bis (UTC)"});
 Object.assign(messages.en, {logsFrom: "Events from (UTC)", logsTo: "Events through (UTC)"});
+Object.assign(messages.de, {metadata_released: "Metadatenprüfung: Medien freigegeben", metadata_deferred: "Metadatenprüfung: Medien warten weiter", metadata_refresh_failed: "Metadatenprüfung: Abruf fehlgeschlagen"});
+Object.assign(messages.en, {metadata_released: "Metadata check: media released", metadata_deferred: "Metadata check: media still waiting", metadata_refresh_failed: "Metadata check: retrieval failed"});
 messages.de.loadCover = "Cover laden";
 messages.en.loadCover = "Load cover";
 Object.assign(messages.de, {seriesNumbered: "Serientag mit Nummer", seriesUnnumbered: "Serientag ohne Nummer", seriesTagHelp: "Verwende {{series_tag}} als Variable oder Metadatenfeld. Ohne Reihe bleibt der Serientag leer. In beiden Vorlagen sind {{series}} und {{series_index}} verfügbar.", sampleSeries: "Serienbeispiel für die Vorschau", sampleSeriesNumbered: "Reihe mit Nummer", sampleSeriesUnnumbered: "Reihe ohne Nummer", sampleSeriesNone: "Keine Reihe"});
@@ -472,11 +474,16 @@ async function loadArrivals() {
 }
 function createArrivalDetails(arrival) {
     const details = document.createElement("details"), summary = document.createElement("summary"), content = document.createElement("div");
+    let detailRequest = 0;
     summary.textContent = strings().details; details.append(summary, content);
     details.addEventListener("toggle", async () => {
-      if (!details.open || content.dataset.loaded === "true") return;
+      const request = ++detailRequest;
+      if (!details.open) return;
       try {
-        const data = await call("/arrivals/" + arrival.event_id); content.replaceChildren();
+        const data = await call("/arrivals/" + arrival.event_id);
+        // A response from an earlier opening must not overwrite the current view.
+        if (request !== detailRequest || !details.open) return;
+        content.replaceChildren();
         const coverButton = document.createElement("button"), coverStatus = document.createElement("span");
         coverButton.type = "button"; coverButton.textContent = strings().loadCover;
         coverButton.addEventListener("click", () => {
@@ -515,8 +522,7 @@ function createArrivalDetails(arrival) {
           content.append(list);
         }
         if (data.history_truncated) { const note = document.createElement("p"); note.textContent = strings().historyTruncated; content.append(note); }
-        content.dataset.loaded = "true";
-      } catch { message.textContent = strings().failed; }
+      } catch { if (request === detailRequest && details.open) message.textContent = strings().failed; }
     });
     return details;
 }

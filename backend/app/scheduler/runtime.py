@@ -183,6 +183,14 @@ class RuntimeScheduler:
                     status
                 ]
                 self._record(code, server_id=server_id, library_id=library.library_id)
+            # Reports are aggregated by server, so do not invent a library association.
+            for count, code in (
+                (metadata.released, "metadata_released"),
+                (metadata.deferred, "metadata_deferred"),
+                (metadata.failed, "metadata_refresh_failed"),
+            ):
+                if count:
+                    self._record(code, server_id=server_id)
         self._next_due[server_id] = now + timedelta(seconds=interval_seconds)
         return report
 
