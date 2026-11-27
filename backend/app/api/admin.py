@@ -147,6 +147,10 @@ class EnabledInput(BaseModel):
     enabled: StrictBool
 
 
+class RemovalInput(BaseModel):
+    confirmed: StrictBool
+
+
 class LibraryRoutingInput(BaseModel):
     monitored: StrictBool
     webhook_ids: list[int] = Field(max_length=100)
@@ -995,6 +999,19 @@ def update_webhook(
         raise HTTPException(status_code=400, detail=str(error)) from error
     except IntegrityError as error:
         raise HTTPException(status_code=409, detail="Webhook name already exists") from error
+
+
+@router.delete("/webhooks/{webhook_id}")
+def remove_unused_webhook(
+    request: Request, webhook_id: int, payload: RemovalInput, _auth: Annotated[AuthenticationService, Depends(_authenticated)]
+) -> dict[str, str]:
+    """Remove an unused local destination only; no Discord API mutation is performed."""
+
+    try:
+        _configuration(request).remove_unused_webhook(webhook_id, confirmed=payload.confirmed)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return {"status": "removed"}
 
 
 @router.get("/libraries")

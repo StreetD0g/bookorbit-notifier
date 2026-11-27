@@ -36,6 +36,8 @@ Object.assign(messages.de, {metadataTiming: "Metadaten-Wartezeit", metadataDelay
 Object.assign(messages.en, {metadataTiming: "Metadata waiting time", metadataDelay: "First check after (seconds)", metadataMaxWait: "Maximum wait (seconds)", metadataSave: "Save waiting time", metadataTimingInvalid: "The maximum wait cannot be shorter than the initial delay.", metadataTimingHelp: "Applies to newly detected media. Waiting media keep their existing times. Only a missing title delays release; checks run on the next scan and may therefore be late."});
 Object.assign(messages.de, {metadataProcessing: "Metadatenverarbeitung", metadataAttempts: "Prüfversuche", metadataNextCheck: "Nächste Prüfung frühestens (UTC)", metadataDeadline: "Wartefrist (UTC)", metadataLastFailed: "Letzte Metadatenprüfung fehlgeschlagen", nextRetry: "Nächster Zustellversuch frühestens (UTC)", sendingStarted: "Versand begonnen (UTC)", processingTimesHint: "Die tatsächliche Verarbeitung kann später erfolgen."});
 Object.assign(messages.en, {metadataProcessing: "Metadata processing", metadataAttempts: "Checks", metadataNextCheck: "Next check no earlier than (UTC)", metadataDeadline: "Wait deadline (UTC)", metadataLastFailed: "Last metadata check failed", nextRetry: "Next delivery attempt no earlier than (UTC)", sendingStarted: "Delivery started (UTC)", processingTimesHint: "Actual processing may occur later."});
+Object.assign(messages.de, {removeWebhook: "Ungenutzten Webhook entfernen", removeWebhookHint: "Nur deaktivierte Webhooks ohne Zustellungen oder Zustellhistorie können entfernt werden.", confirmRemoveWebhook: "Diesen Webhook aus BookOrbit Notifier entfernen? Seine Bibliothekszuordnungen und sein lokales Absenderprofil werden entfernt. Der Webhook bei Discord bleibt unverändert.", removeWebhookFailed: "Webhook konnte nicht entfernt werden. Er muss deaktiviert sein und darf keine Zustellungen oder Zustellhistorie haben."});
+Object.assign(messages.en, {removeWebhook: "Remove unused webhook", removeWebhookHint: "Only disabled webhooks without deliveries or delivery history can be removed.", confirmRemoveWebhook: "Remove this webhook from BookOrbit Notifier? Its library routes and local sender profile will be removed. The Discord webhook remains unchanged.", removeWebhookFailed: "Webhook could not be removed. It must be disabled and have no deliveries or delivery history."});
 Object.assign(messages.de, {testMessage: "Testnachricht senden", testProfile: "Profil für Testnachricht", defaultProfile: "Webhook- und globale Einstellungen", testSent: "Testnachricht gesendet."});
 Object.assign(messages.en, {testMessage: "Send test message", testProfile: "Profile for test message", defaultProfile: "Webhook and global settings", testSent: "Test message sent."});
 Object.assign(messages.de, {refreshFailed: "Die Aktion war erfolgreich, aber die Ansicht konnte nicht aktualisiert werden."});
@@ -686,6 +688,17 @@ function renderManagement() {
     label.append(selection); item.append(label);
     const test = actionButton(strings().testMessage, () => call("/webhooks/" + webhook.id + "/test", {...mutationOptions({library_id: selection.value ? Number(selection.value) : null}), method: "POST"}), strings().testSent);
     test.disabled = !webhook.enabled; item.append(test);
+    const remove = document.createElement("button"); remove.type = "button"; remove.textContent = strings().removeWebhook; remove.disabled = webhook.enabled;
+    remove.addEventListener("click", async () => {
+      if (!window.confirm(strings().confirmRemoveWebhook)) return;
+      remove.disabled = true;
+      try {
+        await call("/webhooks/" + webhook.id, {...mutationOptions({confirmed: true}), method: "DELETE"});
+        originalProfiles.delete(webhook.id);
+        try { await refresh(); message.textContent = strings().configuredOk; } catch { message.textContent = strings().refreshFailed; }
+      } catch { message.textContent = strings().removeWebhookFailed; } finally { remove.disabled = false; }
+    });
+    const removeHint = document.createElement("p"); removeHint.textContent = strings().removeWebhookHint; item.append(remove, removeHint);
     const details = document.createElement("details"), summary = document.createElement("summary"), form = document.createElement("form");
     summary.textContent = strings().edit; details.append(summary);
     const nameLabel = document.createElement("label"), name = document.createElement("input"); nameLabel.textContent = strings().name; name.value = webhook.name; name.maxLength = 120; name.required = true; nameLabel.append(name); form.append(nameLabel);

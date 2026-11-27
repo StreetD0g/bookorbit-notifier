@@ -22,6 +22,7 @@ from app.database.models import (
     QueueStatus,
     ScanHistory,
     ScanStatus,
+    SenderProfileConfig,
     Server,
     Webhook,
 )
@@ -96,6 +97,44 @@ def test_library_metadata_timing_is_authenticated_validated_and_persisted(client
     assert result[0]["metadata_delay_seconds"] == 15
     assert result[0]["metadata_max_wait_seconds"] == 60
     assert "private" not in str(result)
+
+
+def test_remove_unused_webhook_requires_confirmation_and_preserves_delivery_history(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    http, engine = client
+    monkeypatch.setenv("BOOKORBIT_NOTIFIER_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    with Session(engine) as session:
+        server = Server(name="Source", base_url="https://books.example", api_key_encrypted="secret")
+        library = Library(server=server, name="Books", bookorbit_library_id=1)
+        unused = Webhook(name="Unused", url_encrypted="secret", enabled=False)
+        active = Webhook(name="Active", url_encrypted="secret", enabled=True)
+        used = Webhook(name="Used", url_encrypted="secret", enabled=False)
+        library.webhooks.extend([unused, active, used])
+        book = Book(server=server, library=library, bookorbit_book_id=1, title="Existing")
+        event = Event(book=book, server_id=1, library_id=1, event_type=EventType.BOOK_ADDED)
+        used.deliveries.append(NotificationQueueItem(event=event, status=QueueStatus.SENT))
+        session.add_all([server, library, book])
+        session.flush()
+        unused_id, active_id, used_id = unused.id, active.id, used.id
+        session.add(SenderProfileConfig(scope_key=f"webhook:{unused_id}", username_choice="inherit", avatar_choice="inherit"))
+        session.commit()
+    url = f"/api/v1/admin/webhooks/{unused_id}"
+    assert http.request("DELETE", url, headers={"origin": ORIGIN}, json={"confirmed": True}).status_code == 401
+    csrf = setup_and_login(http)
+    assert http.request("DELETE", url, headers={"origin": ORIGIN}, json={"confirmed": True}).status_code == 401
+    headers = {"origin": ORIGIN, "x-csrf-token": csrf}
+    assert http.request("DELETE", url, headers=headers, json={"confirmed": "true"}).status_code == 422
+    assert http.request("DELETE", url, headers=headers, json={"confirmed": False}).status_code == 409
+    assert http.request("DELETE", f"/api/v1/admin/webhooks/{active_id}", headers=headers, json={"confirmed": True}).status_code == 409
+    assert http.request("DELETE", f"/api/v1/admin/webhooks/{used_id}", headers=headers, json={"confirmed": True}).status_code == 409
+    assert http.request("DELETE", url, headers=headers, json={"confirmed": True}).status_code == 200
+    assert http.request("DELETE", url, headers=headers, json={"confirmed": True}).status_code == 409
+    with Session(engine) as session:
+        assert session.get(Webhook, unused_id) is None
+        assert session.get(SenderProfileConfig, f"webhook:{unused_id}") is None
+        assert session.get(Webhook, used_id) is not None
+        assert session.scalar(select(NotificationQueueItem)) is not None
+        assert {webhook.id for webhook in session.get(Library, 1).webhooks} == {active_id, used_id}
 
 
 def test_setup_login_cookie_csrf_and_logout(client) -> None:

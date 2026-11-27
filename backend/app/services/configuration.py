@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher
-from app.database.models import DeliveryMode, Library, NotificationTemplate, Server, Webhook
+from app.database.models import DeliveryMode, Library, NotificationQueueItem, NotificationTemplate, SenderProfileConfig, Server, Webhook
 from app.schemas.bookorbit import BookOrbitLibrary
 from app.templates.safe import (
     ALLOWED_TEMPLATE_VARIABLES,
@@ -204,6 +204,26 @@ class ConfigurationService:
             if url is not None:
                 webhook.url_encrypted = self._cipher.encrypt(url)
             return WebhookView(id=webhook.id, name=webhook.name, enabled=webhook.enabled)
+
+    def remove_unused_webhook(self, webhook_id: int, *, confirmed: bool) -> None:
+        """Remove only a disabled destination with no delivery records, under a SQLite write lock."""
+
+        if confirmed is not True:
+            raise ValueError("Webhook removal requires confirmation")
+        with self._session_factory() as session, session.begin():
+            # Serialize the check and deletion with scanner/outbox writers.
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            webhook = session.get(Webhook, webhook_id)
+            if webhook is None:
+                raise ValueError("Webhook does not exist")
+            if webhook.enabled:
+                raise ValueError("Disable the webhook before removal")
+            if session.scalar(select(NotificationQueueItem.id).where(NotificationQueueItem.webhook_id == webhook_id).limit(1)) is not None:
+                raise ValueError("Webhook has delivery records and cannot be removed")
+            profile = session.get(SenderProfileConfig, f"webhook:{webhook_id}")
+            if profile is not None:
+                session.delete(profile)
+            session.delete(webhook)
 
     def create_template(self, command: CreateTemplate) -> int:
         """Persist a validated declarative template and return only its non-secret ID."""
